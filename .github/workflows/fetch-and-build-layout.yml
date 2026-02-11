@@ -178,9 +178,15 @@ jobs:
           rm -rf ${keyboard_directory}/${{ github.event.inputs.layout_geometry }}/keymaps/${{ github.event.inputs.layout_id }}
           mkdir -p ${keyboard_directory}/${{ github.event.inputs.layout_geometry }}/keymaps && cp -r ${{ github.event.inputs.layout_id }} "$_"
           
-          # Build the layout
+          echo "Building in: $(pwd)/qmk_firmware"
+          
+          # Build the layout - Simplified command
+          # Mounting to /qmk_firmware is standard for QMK images, but we use a custom base here.
+          # We mount to /root/qmk_firmware to match where we'd expect it, OR just /root if we want to be the root.
+          # Let's try mounting to /root and running make directly.
+          
           docker run -v $(pwd)/qmk_firmware:/root --rm qmk /bin/sh -c "
-            qmk setup zsa/qmk_firmware -b firmware${{ steps.download-layout-source.outputs.firmware_version }} -y
+            ls -la /root
             make ${make_prefix}${{ github.event.inputs.layout_geometry }}:${{ github.event.inputs.layout_id }}
           "
           
