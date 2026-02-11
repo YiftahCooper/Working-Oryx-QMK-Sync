@@ -40,15 +40,36 @@ jobs:
       - name: Download layout source
         id: download-layout-source
         run: |
-          response=$(curl --location 'https://oryx.zsa.io/graphql' --header 'Content-Type: application/json' --data '{"query":"query getLayout($hashId: String!, $revisionId: String!, $geometry: String) {layout(hashId: $hashId, geometry: $geometry, revisionId: $revisionId) {  revision { hashId, qmkVersion, title }}}\",\"variables\":{\"hashId\":\"${{ github.event.inputs.layout_id }}\",\"geometry\":\"${{ github.event.inputs.layout_geometry }}\",\"revisionId\":\"latest\"}}' | jq '.data.layout.revision | [.hashId, .qmkVersion, .title]')
-          hash_id=$(echo "${response}" | jq -r '.[0]')
-          firmware_version=$(printf "%.0f" $(echo "${response}" | jq -r '.[1]'))
-          change_description=$(echo "${response}" | jq -r '.[2]')
-          if [[ -z "${change_description}" ]]; then
+          response=$(curl --location 'https://oryx.zsa.io/graphql' --header 'Content-Type: application/json' --data '{"query":"query getLayout($hashId: String!, $revisionId: String!, $geometry: String) {layout(hashId: $hashId, geometry: $geometry, revisionId: $revisionId) {  revision { hashId, qmkVersion, title }}}","variables":{"hashId":"${{ github.event.inputs.layout_id }}","geometry":"${{ github.event.inputs.layout_geometry }}","revisionId":"latest"}}')
+          
+          # Debug output
+          echo "GraphQL Response: $response"
+          
+          # Parse response
+          json_data=$(echo "$response" | jq '.data.layout.revision | [.hashId, .qmkVersion, .title]')
+          
+          hash_id=$(echo "${json_data}" | jq -r '.[0]')
+          firmware_version=$(printf "%.0f" $(echo "${json_data}" | jq -r '.[1]'))
+          change_description=$(echo "${json_data}" | jq -r '.[2]')
+          
+          if [[ "$hash_id" == "null" || -z "$hash_id" ]]; then
+            echo "Error: Could not retrieve layout hash. Check layout ID and geometry."
+            exit 1
+          fi
+          
+          if [[ -z "${change_description}" || "${change_description}" == "null" ]]; then
             change_description="latest layout modification made with Oryx"
           fi
           
+          echo "Downloading source for hash: $hash_id"
           curl -L "https://oryx.zsa.io/source/${hash_id}" -o source.zip
+          
+          # Verify zip file
+          if ! unzip -t source.zip > /dev/null 2>&1; then
+            echo "Error: Downloaded file is not a valid zip archive."
+            cat source.zip
+            exit 1
+          fi
           
           echo firmware_version=${firmware_version} >> "$GITHUB_OUTPUT"
           echo change_description=${change_description} >> "$GITHUB_OUTPUT"
