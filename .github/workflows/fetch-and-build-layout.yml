@@ -43,18 +43,15 @@ jobs:
         run: |
           response=$(curl --location 'https://oryx.zsa.io/graphql' --header 'Content-Type: application/json' --data '{"query":"query getLayout($hashId: String!, $revisionId: String!, $geometry: String) {layout(hashId: $hashId, geometry: $geometry, revisionId: $revisionId) {  revision { hashId, qmkVersion, title }}}","variables":{"hashId":"${{ github.event.inputs.layout_id }}","geometry":"${{ github.event.inputs.layout_geometry }}","revisionId":"latest"}}')
           
-          # Debug output
           echo "GraphQL Response: $response"
           
-          # Parse response
           json_data=$(echo "$response" | jq '.data.layout.revision | [.hashId, .qmkVersion, .title]')
-          
           hash_id=$(echo "${json_data}" | jq -r '.[0]')
           firmware_version=$(printf "%.0f" $(echo "${json_data}" | jq -r '.[1]'))
           change_description=$(echo "${json_data}" | jq -r '.[2]')
           
           if [[ "$hash_id" == "null" || -z "$hash_id" ]]; then
-            echo "Error: Could not retrieve layout hash. Check layout ID and geometry."
+            echo "Error: Could not retrieve layout hash."
             exit 1
           fi
           
@@ -65,10 +62,9 @@ jobs:
           echo "Downloading source for hash: $hash_id"
           curl -L "https://oryx.zsa.io/source/${hash_id}" -o source.zip
           
-          # Verify zip file
+          # Verify zip
           if ! unzip -t source.zip > /dev/null 2>&1; then
-            echo "Error: Downloaded file is not a valid zip archive."
-            cat source.zip
+            echo "Error: Invalid zip."
             exit 1
           fi
           
@@ -77,70 +73,32 @@ jobs:
 
       - name: Unzip the source file
         run: |
-          unzip -oj source.zip '*_source/*' -d ${{ github.event.inputs.layout_id }}
+          # Unzip to a temporary directory 'oryx_source' instead of directly to layout ID
+          unzip -oj source.zip '*_source/*' -d oryx_source
           rm source.zip
 
-      - name: Commit and Push changes
-        env:
-          CHANGE_DESCRIPTION: ${{ steps.download-layout-source.outputs.change_description }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Inject Custom Code (The Clever Bit)
         run: |
-          git config --local user.name "github-actions[bot]"
-          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          # Copy custom code to the source directory
+          cp custom_qmk/custom_code.c oryx_source/
           
-          # Use proper actor and token for auth
-          git remote set-url origin https://${{ github.actor }}:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git
+          # Run python patch script
+          python3 scripts/patch_keymap.py oryx_source custom_qmk/custom_code.c
           
-          # Create or checkout oryx branch
-          git checkout -B oryx
-          
-          git add .
-          
-          # Commit only if there are changes
-          if git diff --staged --quiet; then
-            echo "No changes to commit"
-          else
-             printf "✨(oryx): %s\n" "$CHANGE_DESCRIPTION" | git commit -F - 
-             git push -f origin oryx
-          fi
+          # Now move the patched folder to the expected layout ID name
+          mv oryx_source ${{ github.event.inputs.layout_id }}
 
-      - name: Merge Oryx with custom QMK
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          # Reset main to ensure we are clean
-          git checkout main
-          git pull origin main
-          
-          # Configure remote again just in case (different step context)
-          git remote set-url origin https://${{ github.actor }}:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git
-          
-          # Check if there is anything to merge
-          if git merge-base --is-ancestor oryx main; then
-            echo "Already up to date."
-          else
-            git merge -Xignore-all-space oryx
-            git push origin main
-          fi
-
-      - name: Update QMK firmware submodule to latest version (${{ steps.download-layout-source.outputs.firmware_version }})
+      - name: Update QMK firmware submodule
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           git submodule update --init --remote --depth=1 --no-single-branch
-          
-          # Ensure qmk_firmware directory exists and is valid
           if [ ! -d "qmk_firmware" ] || [ -z "$(ls -A qmk_firmware)" ]; then
              rm -rf qmk_firmware
              git clone --depth 1 https://github.com/zsa/qmk_firmware.git qmk_firmware
           fi
-          
           cd qmk_firmware
-          
-          # Fetch all branches to find the right firmware version
           git fetch --all --tags
-          
-          # Check if the branch exists
           FIRMWARE_BRANCH="firmware${{ steps.download-layout-source.outputs.firmware_version }}"
           if git show-ref --verify --quiet refs/remotes/origin/$FIRMWARE_BRANCH; then
             git checkout -B $FIRMWARE_BRANCH origin/$FIRMWARE_BRANCH
@@ -148,16 +106,7 @@ jobs:
             echo "Warning: Firmware branch $FIRMWARE_BRANCH not found, defaulting to master"
             git checkout master
           fi
-          
           git submodule update --init --recursive
-          cd ..
-          
-          # Add and commit submodule update if changed
-          git add qmk_firmware
-          if ! git diff --staged --quiet; then
-            git commit -m "✨(qmk): Update firmware" 
-            git push origin main
-          fi
 
       - name: Build qmk docker image
         run: docker build -t qmk .
@@ -165,7 +114,6 @@ jobs:
       - name: Build the layout
         id: build-layout
         run: |
-          # Set keyboard directory and make prefix based on firmware version
           if [ "${{ steps.download-layout-source.outputs.firmware_version }}" -ge 24 ]; then
             keyboard_directory="qmk_firmware/keyboards/zsa"
             make_prefix="zsa/"
@@ -174,23 +122,14 @@ jobs:
             make_prefix=""
           fi
           
-          # Copy layout files to the qmk folder
+          # Copy patched layout files to the qmk folder
           rm -rf ${keyboard_directory}/${{ github.event.inputs.layout_geometry }}/keymaps/${{ github.event.inputs.layout_id }}
           mkdir -p ${keyboard_directory}/${{ github.event.inputs.layout_geometry }}/keymaps && cp -r ${{ github.event.inputs.layout_id }} "$_"
           
-          echo "Building in: $(pwd)/qmk_firmware"
-          
-          # Build the layout - Simplified command
-          # Mounting to /qmk_firmware is standard for QMK images, but we use a custom base here.
-          # We mount to /root/qmk_firmware to match where we'd expect it, OR just /root if we want to be the root.
-          # Let's try mounting to /root and running make directly.
-          
           docker run -v $(pwd)/qmk_firmware:/root --rm qmk /bin/sh -c "
-            ls -la /root
             make ${make_prefix}${{ github.event.inputs.layout_geometry }}:${{ github.event.inputs.layout_id }}
           "
           
-          # Find and export built layout          
           normalized_layout_geometry="$(echo "${{ github.event.inputs.layout_geometry }}" | sed 's/\//_/g')"
           echo built_layout_file=$(find ./qmk_firmware -maxdepth 1 -type f -regex ".*${normalized_layout_geometry}.*\.\(bin\|hex\)$") >> "$GITHUB_OUTPUT"
           echo normalized_layout_geometry=${normalized_layout_geometry} >> "$GITHUB_OUTPUT"
