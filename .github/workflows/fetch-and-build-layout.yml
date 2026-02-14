@@ -79,6 +79,10 @@ jobs:
 
       - name: Inject Custom Code (The Clever Bit)
         run: |
+          # Debug: List files
+          echo "Files in oryx_source before patch:"
+          ls -R oryx_source
+          
           # Copy custom code to the source directory
           cp custom_qmk/custom_code.c oryx_source/
           
