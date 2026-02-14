@@ -96,7 +96,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          git submodule update --init --remote --depth=1 --no-single-branch
+          # Clone qmk_firmware if not present
           if [ ! -d "qmk_firmware" ] || [ -z "$(ls -A qmk_firmware)" ]; then
              rm -rf qmk_firmware
              git clone --depth 1 https://github.com/zsa/qmk_firmware.git qmk_firmware
