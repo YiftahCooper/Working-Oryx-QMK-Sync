@@ -91,10 +91,10 @@ jobs:
           echo "KC_F24 occurrences before patch: ${F24_COUNT}"
 
           if [ "${F24_COUNT}" -lt 1 ]; then
-            echo "KC_F24 not present in downloaded keymap. Skipping KC_F24->TD(TD_SPACE) strict invariant checks for this run."
-            echo "requires_td_space=false" >> "$GITHUB_OUTPUT"
+            echo "KC_F24 not present in downloaded keymap. Skipping strict FN24 replacement checks for this run."
+            echo "requires_fn24_patch=false" >> "$GITHUB_OUTPUT"
           else
-            echo "requires_td_space=true" >> "$GITHUB_OUTPUT"
+            echo "requires_fn24_patch=true" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Inject Custom Code (The Clever Bit)
@@ -122,17 +122,17 @@ jobs:
           KEYMAP_PATH="${LAYOUT_ID}/keymap.c"
           test -f "${KEYMAP_PATH}"
 
-          TD_COUNT=$( (grep -o "TD(TD_SPACE)" "${KEYMAP_PATH}" || true) | wc -l | tr -d ' ' )
+          FN24_PATCH_MARKERS=$( (grep -o "ORYX_FN24_NUMDOT_SPACE_PATCH" "${KEYMAP_PATH}" || true) | wc -l | tr -d ' ' )
           F24_AFTER=$( (grep -o "KC_F24" "${KEYMAP_PATH}" || true) | wc -l | tr -d ' ' )
-          echo "TD(TD_SPACE) occurrences after patch: ${TD_COUNT}"
+          echo "FN24 patch marker occurrences after patch: ${FN24_PATCH_MARKERS}"
           echo "KC_F24 occurrences after patch: ${F24_AFTER}"
 
-          REQUIRE_TD_SPACE="${{ steps.prepatch-check.outputs.requires_td_space }}"
-          echo "requires_td_space=${REQUIRE_TD_SPACE}"
+          REQUIRE_FN24_PATCH="${{ steps.prepatch-check.outputs.requires_fn24_patch }}"
+          echo "requires_fn24_patch=${REQUIRE_FN24_PATCH}"
 
-          if [ "${REQUIRE_TD_SPACE}" = "true" ]; then
-            if [ "${TD_COUNT}" -lt 1 ]; then
-              echo "ERROR: TD(TD_SPACE) not found after patch; injection did not apply."
+          if [ "${REQUIRE_FN24_PATCH}" = "true" ]; then
+            if [ "${FN24_PATCH_MARKERS}" -lt 1 ]; then
+              echo "ERROR: FN24 replacement marker not found after patch; replacement did not apply."
               exit 1
             fi
 
@@ -141,7 +141,7 @@ jobs:
               exit 1
             fi
           else
-            echo "Skipping strict TD_SPACE/KC_F24 post-patch assertions because KC_F24 was absent in downloaded source."
+            echo "Skipping strict FN24 post-patch assertions because KC_F24 was absent in downloaded source."
           fi
 
 
