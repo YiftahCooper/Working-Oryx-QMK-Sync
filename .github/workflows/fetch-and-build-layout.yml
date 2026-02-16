@@ -22,7 +22,7 @@ on:
           - ergodox_ez/stm32/shine
           - planck_ez
           - planck_ez/glow
-        default: moonlander/revb
+        default: moonlander/reva
 
 permissions:
   contents: write
