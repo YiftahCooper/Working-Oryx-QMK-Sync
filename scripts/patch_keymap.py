@@ -3,6 +3,90 @@ import re
 import sys
 
 
+def _find_matching_brace(content: str, open_idx: int) -> int:
+    """
+    Return index of the matching '}' for the '{' at open_idx.
+    Skips braces inside strings and comments to keep block matching stable.
+    """
+    if open_idx < 0 or open_idx >= len(content) or content[open_idx] != "{":
+        return -1
+
+    depth = 0
+    i = open_idx
+    in_string = False
+    in_char = False
+    in_line_comment = False
+    in_block_comment = False
+    escape = False
+
+    while i < len(content):
+        ch = content[i]
+        nxt = content[i + 1] if i + 1 < len(content) else ""
+
+        if in_line_comment:
+            if ch == "\n":
+                in_line_comment = False
+            i += 1
+            continue
+
+        if in_block_comment:
+            if ch == "*" and nxt == "/":
+                in_block_comment = False
+                i += 2
+                continue
+            i += 1
+            continue
+
+        if in_string:
+            if escape:
+                escape = False
+            elif ch == "\\":
+                escape = True
+            elif ch == '"':
+                in_string = False
+            i += 1
+            continue
+
+        if in_char:
+            if escape:
+                escape = False
+            elif ch == "\\":
+                escape = True
+            elif ch == "'":
+                in_char = False
+            i += 1
+            continue
+
+        if ch == "/" and nxt == "/":
+            in_line_comment = True
+            i += 2
+            continue
+        if ch == "/" and nxt == "*":
+            in_block_comment = True
+            i += 2
+            continue
+        if ch == '"':
+            in_string = True
+            i += 1
+            continue
+        if ch == "'":
+            in_char = True
+            i += 1
+            continue
+
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return i
+            if depth < 0:
+                return -1
+        i += 1
+
+    return -1
+
+
 def _replace_in_keymaps_only(content: str) -> tuple[str, bool]:
     """
     Replace KC_F24 -> TD(TD_SPACE) only inside the keymaps array.
