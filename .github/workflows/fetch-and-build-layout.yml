@@ -171,6 +171,8 @@ jobs:
       - name: Build the layout
         id: build-layout
         run: |
+          set -euo pipefail
+
           if [ "${{ steps.download-layout-source.outputs.firmware_version }}" -ge 24 ]; then
             keyboard_directory="qmk_firmware/keyboards/zsa"
             make_prefix="zsa/"
@@ -187,8 +189,37 @@ jobs:
             make ${make_prefix}${{ github.event.inputs.layout_geometry }}:${{ github.event.inputs.layout_id }}
           "
           
+          layout_id="${{ github.event.inputs.layout_id }}"
           normalized_layout_geometry="$(echo "${{ github.event.inputs.layout_geometry }}" | sed 's/\//_/g')"
-          echo built_layout_file=$(find ./qmk_firmware -maxdepth 1 -type f -regex ".*${normalized_layout_geometry}.*\.\(bin\|hex\)$") >> "$GITHUB_OUTPUT"
+          bin_candidate="$(find ./qmk_firmware -maxdepth 1 -type f -name "*${normalized_layout_geometry}*${layout_id}*.bin" | head -n 1 || true)"
+          hex_candidate="$(find ./qmk_firmware -maxdepth 1 -type f -name "*${normalized_layout_geometry}*${layout_id}*.hex" | head -n 1 || true)"
+
+          if [ -n "${bin_candidate}" ]; then
+            built_firmware_file="${bin_candidate}"
+          elif [ -n "${hex_candidate}" ]; then
+            built_firmware_file="${hex_candidate}"
+          else
+            echo "ERROR: Could not find built firmware for ${normalized_layout_geometry}:${layout_id}."
+            echo "Available top-level firmware candidates:"
+            find ./qmk_firmware -maxdepth 1 -type f -name "*${normalized_layout_geometry}*" || true
+            exit 1
+          fi
+
+          if [ ! -s "${built_firmware_file}" ]; then
+            echo "ERROR: Built firmware file is missing or empty: ${built_firmware_file}"
+            exit 1
+          fi
+
+          if [[ "${{ github.event.inputs.layout_geometry }}" == moonlander/* ]] && [[ "${built_firmware_file}" != *.bin ]]; then
+            echo "ERROR: Moonlander build should produce .bin, but got: ${built_firmware_file}"
+            exit 1
+          fi
+
+          echo "Built firmware file: ${built_firmware_file}"
+          ls -lh "${built_firmware_file}"
+          file "${built_firmware_file}" || true
+
+          echo built_layout_file="${built_firmware_file}" >> "$GITHUB_OUTPUT"
           echo normalized_layout_geometry=${normalized_layout_geometry} >> "$GITHUB_OUTPUT"
 
       - name: Upload layout
@@ -224,8 +255,7 @@ jobs:
 
           git commit -m "${MSG:-Sync Oryx layout source} [oryx:${HASH_ID:-unknown} geom:${GEOMETRY}]"
           git push origin "HEAD:${BRANCH}"
-          git add "${LAYOUT_ID}"
 
-          echo "Git status for ${LAYOUT_ID} before commit:"
+          echo "Git status for ${LAYOUT_ID} after push:"
           git status --short -- "${LAYOUT_ID}"
 

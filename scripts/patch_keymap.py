@@ -3,6 +3,9 @@ import re
 import sys
 
 PATCH_MARKER = "ORYX_FN24_NUMDOT_SPACE_PATCH"
+LANGUAGE_TOGGLE_MARKER = "ORYX_LANG_TOGGLE_PATCH"
+LANGUAGE_RESYNC_MARKER = "ORYX_LANG_RESYNC_PATCH"
+LANGUAGE_RGB_MARKER = "ORYX_LANG_RGB_PATCH"
 
 
 def _find_matching_brace(content: str, open_idx: int) -> int:
@@ -163,6 +166,103 @@ def _replace_fn24_in_space_tap_dance(content: str) -> tuple[str, bool]:
     return content, False
 
 
+def _inject_custom_language_prototypes(content: str) -> tuple[str, bool]:
+    if "void custom_language_toggled(void);" in content:
+        return content, True
+
+    prototype_block = (
+        "\n// --- Custom language hooks (injected) ---\n"
+        "void custom_language_toggled(void);\n"
+        "void custom_language_resync(void);\n"
+        "void custom_language_rgb_indicator(void);\n"
+        "// ----------------------------------------\n"
+    )
+
+    include_matches = list(re.finditer(r"^\s*#include[^\n]*\n", content, flags=re.MULTILINE))
+    if include_matches:
+        insert_idx = include_matches[-1].end()
+    else:
+        insert_idx = 0
+
+    return content[:insert_idx] + prototype_block + content[insert_idx:], True
+
+
+def _patch_language_switch_tap_dance(content: str) -> tuple[str, bool, bool]:
+    """
+    Patch Oryx dance_1 language key behavior:
+      - append custom_language_toggled() to Alt+Shift outputs
+      - replace KC_F23 double-hold branch with custom_language_resync()
+    """
+    any_toggle_patch = False
+    any_resync_patch = False
+
+    finished_body, has_finished = _get_function_body(content, "dance_1_finished")
+    if has_finished:
+        alt_shift_call = r"(?:register_code16|tap_code16)\s*\(\s*LALT\s*\(\s*KC_LEFT_SHIFT\s*\)\s*\)\s*;"
+
+        def _append_toggle(match: re.Match[str]) -> str:
+            return f"{match.group(0)} custom_language_toggled(); /* {LANGUAGE_TOGGLE_MARKER} */"
+
+        finished_body_new, toggle_n = re.subn(alt_shift_call, _append_toggle, finished_body)
+        if toggle_n > 0:
+            any_toggle_patch = True
+
+        finished_body_new, resync_n = re.subn(
+            r"case\s+DOUBLE_HOLD\s*:\s*(?:register_code16|tap_code16)\s*\(\s*KC_F23\s*\)\s*;\s*break\s*;",
+            f"case DOUBLE_HOLD: custom_language_resync(); break; /* {LANGUAGE_RESYNC_MARKER} */",
+            finished_body_new,
+            count=1,
+        )
+        if resync_n > 0:
+            any_resync_patch = True
+
+        content = _replace_function_body(content, "dance_1_finished", finished_body_new)
+
+    on_body, has_on = _get_function_body(content, "on_dance_1")
+    if has_on:
+        alt_shift_tap_call = r"tap_code16\s*\(\s*LALT\s*\(\s*KC_LEFT_SHIFT\s*\)\s*\)\s*;"
+
+        def _append_toggle_on(match: re.Match[str]) -> str:
+            return f"{match.group(0)} custom_language_toggled(); /* {LANGUAGE_TOGGLE_MARKER} */"
+
+        on_body_new, on_toggle_n = re.subn(alt_shift_tap_call, _append_toggle_on, on_body)
+        if on_toggle_n > 0:
+            any_toggle_patch = True
+            content = _replace_function_body(content, "on_dance_1", on_body_new)
+
+    reset_body, has_reset = _get_function_body(content, "dance_1_reset")
+    if has_reset:
+        reset_body_new, _ = re.subn(
+            r"case\s+DOUBLE_HOLD\s*:\s*unregister_code16\s*\(\s*KC_F23\s*\)\s*;\s*break\s*;",
+            f"case DOUBLE_HOLD: break; /* {LANGUAGE_RESYNC_MARKER} */",
+            reset_body,
+            count=1,
+        )
+        content = _replace_function_body(content, "dance_1_reset", reset_body_new)
+
+    return content, any_toggle_patch, any_resync_patch
+
+
+def _patch_rgb_indicator_hook(content: str) -> tuple[str, bool]:
+    body, has_fn = _get_function_body(content, "rgb_matrix_indicators_user")
+    if not has_fn:
+        return content, False
+
+    if "custom_language_rgb_indicator();" in body:
+        return content, True
+
+    body_new, return_n = re.subn(
+        r"\breturn\s+true\s*;",
+        f"custom_language_rgb_indicator(); /* {LANGUAGE_RGB_MARKER} */\n  return true;",
+        body,
+        count=1,
+    )
+    if return_n == 0:
+        body_new = body + f"\n  custom_language_rgb_indicator(); /* {LANGUAGE_RGB_MARKER} */\n"
+
+    return _replace_function_body(content, "rgb_matrix_indicators_user", body_new), True
+
+
 
 def patch_keymap(layout_dir: str, custom_code_path: str) -> None:
     keymap_path = os.path.join(layout_dir, "keymap.c")
@@ -178,7 +278,10 @@ def patch_keymap(layout_dir: str, custom_code_path: str) -> None:
 
     print("Found keymap.c, length:", len(content))
 
-    # 1) Replace FN24 behavior only in the corresponding tap-dance function.
+    # 1) Add forward declarations for custom language hooks.
+    content, _ = _inject_custom_language_prototypes(content)
+
+    # 2) Replace FN24 behavior only in the corresponding tap-dance function.
     content, replaced = _replace_fn24_in_space_tap_dance(content)
     if replaced:
         print("Replaced KC_F24 tap-dance behavior with KP_DOT+SPACE on double tap")
@@ -187,7 +290,26 @@ def patch_keymap(layout_dir: str, custom_code_path: str) -> None:
     else:
         print("KC_F24 not present in keymap.c; no FN24 tap-dance replacement needed.")
 
-    # 2) Hook process_record_user
+    # 3) Patch language switch/resync hooks in dance_1 if present.
+    content, lang_toggle_patched, lang_resync_patched = _patch_language_switch_tap_dance(content)
+    if lang_toggle_patched:
+        print("Patched dance_1 Alt+Shift path with custom_language_toggled hooks")
+    else:
+        print("Warning: Did not patch dance_1 Alt+Shift path; language toggle counter may be incomplete.")
+
+    if lang_resync_patched:
+        print("Patched dance_1 double-hold KC_F23 path to custom_language_resync")
+    else:
+        print("Warning: Did not patch dance_1 KC_F23 double-hold path for resync.")
+
+    # 4) Patch RGB indicator hook.
+    content, rgb_patched = _patch_rgb_indicator_hook(content)
+    if rgb_patched:
+        print("Patched rgb_matrix_indicators_user with custom language indicator hook")
+    else:
+        print("Warning: rgb_matrix_indicators_user not found; language RGB indicator hook not applied.")
+
+    # 5) Hook process_record_user
     pattern = r"bool\s+process_record_user\s*\("
     if not re.search(pattern, content):
         print("Error: Could not find process_record_user in keymap.c")
