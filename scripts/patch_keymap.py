@@ -7,8 +7,10 @@ LANGUAGE_TOGGLE_MARKER = "ORYX_LANG_TOGGLE_PATCH"
 LANGUAGE_RESYNC_MARKER = "ORYX_LANG_RESYNC_PATCH"
 LANGUAGE_RGB_MARKER = "ORYX_LANG_RGB_PATCH"
 TAPHOLD_COMPAT_MARKER = "ORYX_TAPHOLD_FALLBACK_PATCH"
-MAX_TAPPING_TERM_SUBTRACT = 20
-RELAX_AGGRESSIVE_TAPPING_TERMS = False
+DOUBLETAP_COMPAT_MARKER = "ORYX_DOUBLETAP_FALLBACK_PATCH"
+# Keep per-key tap windows from collapsing into impractically short ranges.
+MAX_TAPPING_TERM_SUBTRACT = 40
+RELAX_AGGRESSIVE_TAPPING_TERMS = True
 
 
 def _find_matching_brace(content: str, open_idx: int) -> int:
@@ -335,6 +337,82 @@ def _normalize_tap_dance_hold_resolution(content: str) -> tuple[str, int]:
     return content, patched_finished
 
 
+def _clone_double_tap_to_double_single(body: str) -> tuple[str, bool]:
+    if "case DOUBLE_TAP:" not in body:
+        return body, False
+
+    # Preserve keys that intentionally differentiate double tap from double hold.
+    if "case DOUBLE_HOLD:" in body:
+        return body, False
+
+    if DOUBLETAP_COMPAT_MARKER in body:
+        return body, False
+
+    double_tap_case = re.search(
+        r"(?P<indent>[ \t]*)case\s+DOUBLE_TAP\s*:\s*(?P<action>.*?)\s*break\s*;",
+        body,
+        flags=re.DOTALL,
+    )
+    if not double_tap_case:
+        return body, False
+
+    indent = double_tap_case.group("indent")
+    action = double_tap_case.group("action").strip()
+    if not action:
+        return body, False
+
+    replacement_case = (
+        f"{indent}case DOUBLE_SINGLE_TAP: {action} break; "
+        f"/* {DOUBLETAP_COMPAT_MARKER} */"
+    )
+
+    if "case DOUBLE_SINGLE_TAP:" in body:
+        body_new, replaced = re.subn(
+            r"(?P<indent>[ \t]*)case\s+DOUBLE_SINGLE_TAP\s*:\s*.*?(?:\s*break\s*;)?",
+            replacement_case,
+            body,
+            count=1,
+            flags=re.DOTALL,
+        )
+        return body_new, replaced > 0
+
+    injected_case = f"{double_tap_case.group(0)}\n{replacement_case}"
+    body_new = body[: double_tap_case.start()] + injected_case + body[double_tap_case.end() :]
+    return body_new, True
+
+
+def _normalize_tap_dance_double_tap_resolution(content: str) -> tuple[str, int]:
+    """
+    Treat interrupted doubles (DOUBLE_SINGLE_TAP) like DOUBLE_TAP for dances
+    that do not define DOUBLE_HOLD behavior.
+    """
+    patched_finished = 0
+
+    for dance_idx in range(0, 24):
+        finished_name = f"dance_{dance_idx}_finished"
+        finished_body, has_finished = _get_function_body(content, finished_name)
+        if not has_finished:
+            continue
+
+        finished_body_new, finished_changed = _clone_double_tap_to_double_single(finished_body)
+        if not finished_changed:
+            continue
+
+        content = _replace_function_body(content, finished_name, finished_body_new)
+        patched_finished += 1
+
+        reset_name = f"dance_{dance_idx}_reset"
+        reset_body, has_reset = _get_function_body(content, reset_name)
+        if not has_reset:
+            continue
+
+        reset_body_new, reset_changed = _clone_double_tap_to_double_single(reset_body)
+        if reset_changed:
+            content = _replace_function_body(content, reset_name, reset_body_new)
+
+    return content, patched_finished
+
+
 def _relax_aggressive_tapping_terms(content: str) -> tuple[str, int]:
     """
     Oryx can emit very small per-key tapping terms (e.g. TAPPING_TERM-120/-134),
@@ -415,7 +493,15 @@ def patch_keymap(layout_dir: str, custom_code_path: str) -> None:
     else:
         print("No tap-dance SINGLE_HOLD fallback patching required.")
 
-    # 6) Optionally relax aggressive per-key tapping-term reductions.
+    # 6) For dances without explicit double-hold behavior, treat DOUBLE_SINGLE_TAP
+    # as DOUBLE_TAP so interrupted doubles still trigger the double function.
+    content, doubletap_fallback_count = _normalize_tap_dance_double_tap_resolution(content)
+    if doubletap_fallback_count > 0:
+        print(f"Added DOUBLE_SINGLE_TAP->DOUBLE_TAP fallback to {doubletap_fallback_count} tap-dance handlers")
+    else:
+        print("No tap-dance DOUBLE_SINGLE_TAP fallback patching required.")
+
+    # 7) Optionally relax aggressive per-key tapping-term reductions.
     if RELAX_AGGRESSIVE_TAPPING_TERMS:
         content, tapping_term_changes = _relax_aggressive_tapping_terms(content)
         if tapping_term_changes > 0:
@@ -428,7 +514,7 @@ def patch_keymap(layout_dir: str, custom_code_path: str) -> None:
     else:
         print("Keeping Oryx per-key tapping terms unchanged.")
 
-    # 7) Hook process_record_user
+    # 8) Hook process_record_user
     pattern = r"bool\s+process_record_user\s*\("
     if not re.search(pattern, content):
         print("Error: Could not find process_record_user in keymap.c")
