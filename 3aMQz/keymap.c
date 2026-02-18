@@ -100,25 +100,25 @@ const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX_COLS] = {
 uint16_t get_tapping_term(uint16_t keycode, keyrecord_t *record) {
     switch (keycode) {
         case TD(DANCE_1):
-            return TAPPING_TERM -80;
+            return TAPPING_TERM - 40;
         case MT(MOD_RALT, KC_TAB):
-            return TAPPING_TERM -60;
+            return TAPPING_TERM - 40;
         case TD(DANCE_2):
-            return TAPPING_TERM -110;
+            return TAPPING_TERM - 40;
         case MT(MOD_RCTL, KC_PSCR):
-            return TAPPING_TERM -110;
+            return TAPPING_TERM - 40;
         case MEH_T(KC_PAGE_UP):
-            return TAPPING_TERM -120;
+            return TAPPING_TERM - 40;
         case ALL_T(KC_PGDN):
-            return TAPPING_TERM -120;
+            return TAPPING_TERM - 40;
         case DUAL_FUNC_1:
-            return TAPPING_TERM -80;
+            return TAPPING_TERM - 40;
         case TD(DANCE_3):
-            return TAPPING_TERM -120;
+            return TAPPING_TERM - 40;
         case TD(DANCE_4):
-            return TAPPING_TERM -120;
+            return TAPPING_TERM - 40;
         case TD(DANCE_5):
-            return TAPPING_TERM -134;
+            return TAPPING_TERM - 40;
         default:
             return TAPPING_TERM;
     }
@@ -266,7 +266,7 @@ void dance_0_finished(tap_dance_state_t *state, void *user_data) {
         case SINGLE_TAP: register_code16(KC_DELETE); break;
         case SINGLE_HOLD: register_code16(KC_DELETE); break; /* ORYX_TAPHOLD_FALLBACK_PATCH */
         case DOUBLE_TAP: register_code16(LCTL(KC_DELETE)); break;
-        case DOUBLE_SINGLE_TAP: tap_code16(KC_DELETE); register_code16(KC_DELETE);
+        case DOUBLE_SINGLE_TAP: register_code16(LCTL(KC_DELETE)); break; /* ORYX_DOUBLETAP_FALLBACK_PATCH */tap_code16(KC_DELETE); register_code16(KC_DELETE);
     }
 }
 
@@ -276,7 +276,7 @@ void dance_0_reset(tap_dance_state_t *state, void *user_data) {
         case SINGLE_TAP: unregister_code16(KC_DELETE); break;
         case SINGLE_HOLD: unregister_code16(KC_DELETE); break; /* ORYX_TAPHOLD_FALLBACK_PATCH */
         case DOUBLE_TAP: unregister_code16(LCTL(KC_DELETE)); break;
-        case DOUBLE_SINGLE_TAP: unregister_code16(KC_DELETE); break;
+        case DOUBLE_SINGLE_TAP: unregister_code16(LCTL(KC_DELETE)); break; /* ORYX_DOUBLETAP_FALLBACK_PATCH */unregister_code16(KC_DELETE); break;
     }
     dance_state[0].step = 0;
 }
@@ -338,7 +338,7 @@ void dance_2_finished(tap_dance_state_t *state, void *user_data) {
         case SINGLE_TAP: register_code16(KC_SPACE); break;
         case SINGLE_HOLD: register_code16(KC_LEFT_SHIFT); break;
         case DOUBLE_TAP: register_code16(KC_CAPS); break;
-        case DOUBLE_SINGLE_TAP: tap_code16(KC_SPACE); register_code16(KC_SPACE);
+        case DOUBLE_SINGLE_TAP: register_code16(KC_CAPS); break; /* ORYX_DOUBLETAP_FALLBACK_PATCH */tap_code16(KC_SPACE); register_code16(KC_SPACE);
     }
 }
 
@@ -348,7 +348,7 @@ void dance_2_reset(tap_dance_state_t *state, void *user_data) {
         case SINGLE_TAP: unregister_code16(KC_SPACE); break;
         case SINGLE_HOLD: unregister_code16(KC_LEFT_SHIFT); break;
         case DOUBLE_TAP: unregister_code16(KC_CAPS); break;
-        case DOUBLE_SINGLE_TAP: unregister_code16(KC_SPACE); break;
+        case DOUBLE_SINGLE_TAP: unregister_code16(KC_CAPS); break; /* ORYX_DOUBLETAP_FALLBACK_PATCH */unregister_code16(KC_SPACE); break;
     }
     dance_state[2].step = 0;
 }
@@ -373,7 +373,7 @@ void dance_3_finished(tap_dance_state_t *state, void *user_data) {
         case SINGLE_TAP: register_code16(KC_DELETE); break;
         case SINGLE_HOLD: register_code16(KC_DELETE); break; /* ORYX_TAPHOLD_FALLBACK_PATCH */
         case DOUBLE_TAP: register_code16(LCTL(KC_DELETE)); break;
-        case DOUBLE_SINGLE_TAP: tap_code16(KC_DELETE); register_code16(KC_DELETE);
+        case DOUBLE_SINGLE_TAP: register_code16(LCTL(KC_DELETE)); break; /* ORYX_DOUBLETAP_FALLBACK_PATCH */tap_code16(KC_DELETE); register_code16(KC_DELETE);
     }
 }
 
@@ -383,7 +383,7 @@ void dance_3_reset(tap_dance_state_t *state, void *user_data) {
         case SINGLE_TAP: unregister_code16(KC_DELETE); break;
         case SINGLE_HOLD: unregister_code16(KC_DELETE); break; /* ORYX_TAPHOLD_FALLBACK_PATCH */
         case DOUBLE_TAP: unregister_code16(LCTL(KC_DELETE)); break;
-        case DOUBLE_SINGLE_TAP: unregister_code16(KC_DELETE); break;
+        case DOUBLE_SINGLE_TAP: unregister_code16(LCTL(KC_DELETE)); break; /* ORYX_DOUBLETAP_FALLBACK_PATCH */unregister_code16(KC_DELETE); break;
     }
     dance_state[3].step = 0;
 }
@@ -408,7 +408,7 @@ void dance_4_finished(tap_dance_state_t *state, void *user_data) {
         case SINGLE_TAP: register_code16(KC_BSPC); break;
         case SINGLE_HOLD: register_code16(KC_BSPC); break; /* ORYX_TAPHOLD_FALLBACK_PATCH */
         case DOUBLE_TAP: register_code16(LCTL(KC_BSPC)); break;
-        case DOUBLE_SINGLE_TAP: tap_code16(KC_BSPC); register_code16(KC_BSPC);
+        case DOUBLE_SINGLE_TAP: register_code16(LCTL(KC_BSPC)); break; /* ORYX_DOUBLETAP_FALLBACK_PATCH */tap_code16(KC_BSPC); register_code16(KC_BSPC);
     }
 }
 
@@ -418,7 +418,7 @@ void dance_4_reset(tap_dance_state_t *state, void *user_data) {
         case SINGLE_TAP: unregister_code16(KC_BSPC); break;
         case SINGLE_HOLD: unregister_code16(KC_BSPC); break; /* ORYX_TAPHOLD_FALLBACK_PATCH */
         case DOUBLE_TAP: unregister_code16(LCTL(KC_BSPC)); break;
-        case DOUBLE_SINGLE_TAP: unregister_code16(KC_BSPC); break;
+        case DOUBLE_SINGLE_TAP: unregister_code16(LCTL(KC_BSPC)); break; /* ORYX_DOUBLETAP_FALLBACK_PATCH */unregister_code16(KC_BSPC); break;
     }
     dance_state[4].step = 0;
 }
@@ -443,7 +443,7 @@ void dance_5_finished(tap_dance_state_t *state, void *user_data) {
         case SINGLE_TAP: register_code16(KC_SPACE); break;
         case SINGLE_HOLD: register_code16(KC_SPACE); break; /* ORYX_TAPHOLD_FALLBACK_PATCH */
         case DOUBLE_TAP: tap_code16(KC_KP_DOT); tap_code16(KC_SPACE); break; /* ORYX_FN24_NUMDOT_SPACE_PATCH */
-        case DOUBLE_SINGLE_TAP: tap_code16(KC_KP_DOT); tap_code16(KC_SPACE); break; /* ORYX_FN24_NUMDOT_SPACE_PATCH */}
+        case DOUBLE_SINGLE_TAP: tap_code16(KC_KP_DOT); tap_code16(KC_SPACE); break; /* ORYX_DOUBLETAP_FALLBACK_PATCH */tap_code16(KC_KP_DOT); tap_code16(KC_SPACE); break; /* ORYX_FN24_NUMDOT_SPACE_PATCH */}
 }
 
 void dance_5_reset(tap_dance_state_t *state, void *user_data) {
