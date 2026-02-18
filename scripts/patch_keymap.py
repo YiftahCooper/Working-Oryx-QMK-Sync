@@ -6,6 +6,9 @@ PATCH_MARKER = "ORYX_FN24_NUMDOT_SPACE_PATCH"
 LANGUAGE_TOGGLE_MARKER = "ORYX_LANG_TOGGLE_PATCH"
 LANGUAGE_RESYNC_MARKER = "ORYX_LANG_RESYNC_PATCH"
 LANGUAGE_RGB_MARKER = "ORYX_LANG_RGB_PATCH"
+TAPHOLD_COMPAT_MARKER = "ORYX_TAPHOLD_FALLBACK_PATCH"
+MAX_TAPPING_TERM_SUBTRACT = 20
+RELAX_AGGRESSIVE_TAPPING_TERMS = False
 
 
 def _find_matching_brace(content: str, open_idx: int) -> int:
@@ -129,7 +132,7 @@ def _get_function_body(content: str, function_name: str) -> tuple[str, bool]:
 def _replace_fn24_in_space_tap_dance(content: str) -> tuple[str, bool]:
     """
     Replace FN24 in the generated right-thumb tap dance with:
-      DOUBLE_TAP => num-dot then space.
+      DOUBLE_TAP and DOUBLE_SINGLE_TAP => num-dot then space.
     Target only dance_<n>_finished/reset function bodies.
     """
     for dance_idx in range(0, 24):
@@ -142,23 +145,36 @@ def _replace_fn24_in_space_tap_dance(content: str) -> tuple[str, bool]:
 
         finished_body_new, finished_n = re.subn(
             r"case\s+DOUBLE_TAP\s*:\s*(?:register_code16|tap_code16)\s*\(\s*KC_F24\s*\)\s*;\s*break\s*;",
-            f"case DOUBLE_TAP: tap_code16(KC_KP_DOT); register_code16(KC_SPACE); break; /* {PATCH_MARKER} */",
+            f"case DOUBLE_TAP: tap_code16(KC_KP_DOT); tap_code16(KC_SPACE); break; /* {PATCH_MARKER} */",
             finished_body,
             count=1,
         )
         if finished_n == 0:
             continue
+
+        finished_body_new, _ = re.subn(
+            r"case\s+DOUBLE_SINGLE_TAP\s*:\s*tap_code16\s*\(\s*KC_SPACE\s*\)\s*;\s*register_code16\s*\(\s*KC_SPACE\s*\)\s*;?\s*(?:break\s*;)?",
+            f"case DOUBLE_SINGLE_TAP: tap_code16(KC_KP_DOT); tap_code16(KC_SPACE); break; /* {PATCH_MARKER} */",
+            finished_body_new,
+            count=1,
+        )
         content = _replace_function_body(content, finished_name, finished_body_new)
 
         reset_body, has_reset = _get_function_body(content, reset_name)
         if has_reset:
             reset_body_new, reset_n = re.subn(
                 r"case\s+DOUBLE_TAP\s*:\s*(?:unregister_code16|tap_code16)\s*\(\s*KC_F24\s*\)\s*;\s*break\s*;",
-                f"case DOUBLE_TAP: unregister_code16(KC_SPACE); break; /* {PATCH_MARKER} */",
+                f"case DOUBLE_TAP: break; /* {PATCH_MARKER} */",
                 reset_body,
                 count=1,
             )
             if reset_n > 0:
+                reset_body_new, _ = re.subn(
+                    r"case\s+DOUBLE_SINGLE_TAP\s*:\s*unregister_code16\s*\(\s*KC_SPACE\s*\)\s*;\s*break\s*;",
+                    f"case DOUBLE_SINGLE_TAP: break; /* {PATCH_MARKER} */",
+                    reset_body_new,
+                    count=1,
+                )
                 content = _replace_function_body(content, reset_name, reset_body_new)
 
         return content, True
@@ -263,6 +279,89 @@ def _patch_rgb_indicator_hook(content: str) -> tuple[str, bool]:
     return _replace_function_body(content, "rgb_matrix_indicators_user", body_new), True
 
 
+def _clone_single_tap_to_single_hold(body: str) -> tuple[str, bool]:
+    if "case SINGLE_HOLD:" in body or TAPHOLD_COMPAT_MARKER in body:
+        return body, False
+
+    single_tap_case = re.search(
+        r"(?P<indent>[ \t]*)case\s+SINGLE_TAP\s*:\s*(?P<action>.*?)\s*break\s*;",
+        body,
+        flags=re.DOTALL,
+    )
+    if not single_tap_case:
+        return body, False
+
+    indent = single_tap_case.group("indent")
+    action = single_tap_case.group("action").strip()
+    if not action:
+        return body, False
+
+    injected_case = (
+        f"{single_tap_case.group(0)}\n"
+        f"{indent}case SINGLE_HOLD: {action} break; /* {TAPHOLD_COMPAT_MARKER} */"
+    )
+    return body[: single_tap_case.start()] + injected_case + body[single_tap_case.end() :], True
+
+
+def _normalize_tap_dance_hold_resolution(content: str) -> tuple[str, int]:
+    """
+    For tap-dance keys that have SINGLE_TAP but no SINGLE_HOLD branch, mirror the
+    old keymap behavior by treating SINGLE_HOLD as SINGLE_TAP.
+    """
+    patched_finished = 0
+
+    for dance_idx in range(0, 24):
+        finished_name = f"dance_{dance_idx}_finished"
+        finished_body, has_finished = _get_function_body(content, finished_name)
+        if not has_finished:
+            continue
+
+        finished_body_new, finished_changed = _clone_single_tap_to_single_hold(finished_body)
+        if not finished_changed:
+            continue
+
+        content = _replace_function_body(content, finished_name, finished_body_new)
+        patched_finished += 1
+
+        reset_name = f"dance_{dance_idx}_reset"
+        reset_body, has_reset = _get_function_body(content, reset_name)
+        if not has_reset:
+            continue
+
+        reset_body_new, reset_changed = _clone_single_tap_to_single_hold(reset_body)
+        if reset_changed:
+            content = _replace_function_body(content, reset_name, reset_body_new)
+
+    return content, patched_finished
+
+
+def _relax_aggressive_tapping_terms(content: str) -> tuple[str, int]:
+    """
+    Oryx can emit very small per-key tapping terms (e.g. TAPPING_TERM-120/-134),
+    which makes single taps behave like missed/hold events for normal typing speed.
+    Clamp per-key reductions in get_tapping_term to a safer ceiling.
+    """
+    body, has_fn = _get_function_body(content, "get_tapping_term")
+    if not has_fn:
+        return content, 0
+
+    changes = 0
+
+    def _clamp(match: re.Match[str]) -> str:
+        nonlocal changes
+        original_subtract = int(match.group(1))
+        clamped_subtract = min(original_subtract, MAX_TAPPING_TERM_SUBTRACT)
+        if clamped_subtract != original_subtract:
+            changes += 1
+            return f"return TAPPING_TERM - {clamped_subtract};"
+        return match.group(0)
+
+    body_new = re.sub(r"return\s+TAPPING_TERM\s*-\s*(\d+)\s*;", _clamp, body)
+    if changes == 0:
+        return content, 0
+
+    return _replace_function_body(content, "get_tapping_term", body_new), changes
+
 
 def patch_keymap(layout_dir: str, custom_code_path: str) -> None:
     keymap_path = os.path.join(layout_dir, "keymap.c")
@@ -309,7 +408,27 @@ def patch_keymap(layout_dir: str, custom_code_path: str) -> None:
     else:
         print("Warning: rgb_matrix_indicators_user not found; language RGB indicator hook not applied.")
 
-    # 5) Hook process_record_user
+    # 5) For dances without explicit hold behavior, treat SINGLE_HOLD as SINGLE_TAP.
+    content, hold_fallback_count = _normalize_tap_dance_hold_resolution(content)
+    if hold_fallback_count > 0:
+        print(f"Added SINGLE_HOLD->SINGLE_TAP fallback to {hold_fallback_count} tap-dance handlers")
+    else:
+        print("No tap-dance SINGLE_HOLD fallback patching required.")
+
+    # 6) Optionally relax aggressive per-key tapping-term reductions.
+    if RELAX_AGGRESSIVE_TAPPING_TERMS:
+        content, tapping_term_changes = _relax_aggressive_tapping_terms(content)
+        if tapping_term_changes > 0:
+            print(
+                f"Relaxed {tapping_term_changes} aggressive per-key tapping-term reductions "
+                f"(max subtract: {MAX_TAPPING_TERM_SUBTRACT})"
+            )
+        else:
+            print("No aggressive per-key tapping-term reductions required patching.")
+    else:
+        print("Keeping Oryx per-key tapping terms unchanged.")
+
+    # 7) Hook process_record_user
     pattern = r"bool\s+process_record_user\s*\("
     if not re.search(pattern, content):
         print("Error: Could not find process_record_user in keymap.c")
