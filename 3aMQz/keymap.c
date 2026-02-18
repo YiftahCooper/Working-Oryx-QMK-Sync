@@ -47,10 +47,10 @@ enum tap_dance_codes {
   DANCE_6,
 };
 
-#define DUAL_FUNC_0 LT(5, KC_F8)
-#define DUAL_FUNC_1 LT(13, KC_P)
-#define DUAL_FUNC_2 LT(6, KC_P)
-#define DUAL_FUNC_3 LT(13, KC_B)
+#define DUAL_FUNC_0 LT(7, KC_F9)
+#define DUAL_FUNC_1 LT(3, KC_5)
+#define DUAL_FUNC_2 LT(5, KC_Z)
+#define DUAL_FUNC_3 LT(6, KC_7)
 
 const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX_COLS] = {
   [0] = LAYOUT_moonlander(
@@ -264,6 +264,7 @@ void dance_0_finished(tap_dance_state_t *state, void *user_data) {
     dance_state[0].step = dance_step(state);
     switch (dance_state[0].step) {
         case SINGLE_TAP: register_code16(KC_DELETE); break;
+        case SINGLE_HOLD: register_code16(KC_DELETE); break; /* ORYX_TAPHOLD_FALLBACK_PATCH */
         case DOUBLE_TAP: register_code16(LCTL(KC_DELETE)); break;
         case DOUBLE_SINGLE_TAP: tap_code16(KC_DELETE); register_code16(KC_DELETE);
     }
@@ -273,6 +274,7 @@ void dance_0_reset(tap_dance_state_t *state, void *user_data) {
     wait_ms(10);
     switch (dance_state[0].step) {
         case SINGLE_TAP: unregister_code16(KC_DELETE); break;
+        case SINGLE_HOLD: unregister_code16(KC_DELETE); break; /* ORYX_TAPHOLD_FALLBACK_PATCH */
         case DOUBLE_TAP: unregister_code16(LCTL(KC_DELETE)); break;
         case DOUBLE_SINGLE_TAP: unregister_code16(KC_DELETE); break;
     }
@@ -369,6 +371,7 @@ void dance_3_finished(tap_dance_state_t *state, void *user_data) {
     dance_state[3].step = dance_step(state);
     switch (dance_state[3].step) {
         case SINGLE_TAP: register_code16(KC_DELETE); break;
+        case SINGLE_HOLD: register_code16(KC_DELETE); break; /* ORYX_TAPHOLD_FALLBACK_PATCH */
         case DOUBLE_TAP: register_code16(LCTL(KC_DELETE)); break;
         case DOUBLE_SINGLE_TAP: tap_code16(KC_DELETE); register_code16(KC_DELETE);
     }
@@ -378,6 +381,7 @@ void dance_3_reset(tap_dance_state_t *state, void *user_data) {
     wait_ms(10);
     switch (dance_state[3].step) {
         case SINGLE_TAP: unregister_code16(KC_DELETE); break;
+        case SINGLE_HOLD: unregister_code16(KC_DELETE); break; /* ORYX_TAPHOLD_FALLBACK_PATCH */
         case DOUBLE_TAP: unregister_code16(LCTL(KC_DELETE)); break;
         case DOUBLE_SINGLE_TAP: unregister_code16(KC_DELETE); break;
     }
@@ -402,6 +406,7 @@ void dance_4_finished(tap_dance_state_t *state, void *user_data) {
     dance_state[4].step = dance_step(state);
     switch (dance_state[4].step) {
         case SINGLE_TAP: register_code16(KC_BSPC); break;
+        case SINGLE_HOLD: register_code16(KC_BSPC); break; /* ORYX_TAPHOLD_FALLBACK_PATCH */
         case DOUBLE_TAP: register_code16(LCTL(KC_BSPC)); break;
         case DOUBLE_SINGLE_TAP: tap_code16(KC_BSPC); register_code16(KC_BSPC);
     }
@@ -411,6 +416,7 @@ void dance_4_reset(tap_dance_state_t *state, void *user_data) {
     wait_ms(10);
     switch (dance_state[4].step) {
         case SINGLE_TAP: unregister_code16(KC_BSPC); break;
+        case SINGLE_HOLD: unregister_code16(KC_BSPC); break; /* ORYX_TAPHOLD_FALLBACK_PATCH */
         case DOUBLE_TAP: unregister_code16(LCTL(KC_BSPC)); break;
         case DOUBLE_SINGLE_TAP: unregister_code16(KC_BSPC); break;
     }
@@ -435,17 +441,18 @@ void dance_5_finished(tap_dance_state_t *state, void *user_data) {
     dance_state[5].step = dance_step(state);
     switch (dance_state[5].step) {
         case SINGLE_TAP: register_code16(KC_SPACE); break;
-        case DOUBLE_TAP: tap_code16(KC_KP_DOT); register_code16(KC_SPACE); break; /* ORYX_FN24_NUMDOT_SPACE_PATCH */
-        case DOUBLE_SINGLE_TAP: tap_code16(KC_SPACE); register_code16(KC_SPACE);
-    }
+        case SINGLE_HOLD: register_code16(KC_SPACE); break; /* ORYX_TAPHOLD_FALLBACK_PATCH */
+        case DOUBLE_TAP: tap_code16(KC_KP_DOT); tap_code16(KC_SPACE); break; /* ORYX_FN24_NUMDOT_SPACE_PATCH */
+        case DOUBLE_SINGLE_TAP: tap_code16(KC_KP_DOT); tap_code16(KC_SPACE); break; /* ORYX_FN24_NUMDOT_SPACE_PATCH */}
 }
 
 void dance_5_reset(tap_dance_state_t *state, void *user_data) {
     wait_ms(10);
     switch (dance_state[5].step) {
         case SINGLE_TAP: unregister_code16(KC_SPACE); break;
-        case DOUBLE_TAP: unregister_code16(KC_SPACE); break; /* ORYX_FN24_NUMDOT_SPACE_PATCH */
-        case DOUBLE_SINGLE_TAP: unregister_code16(KC_SPACE); break;
+        case SINGLE_HOLD: unregister_code16(KC_SPACE); break; /* ORYX_TAPHOLD_FALLBACK_PATCH */
+        case DOUBLE_TAP: break; /* ORYX_FN24_NUMDOT_SPACE_PATCH */
+        case DOUBLE_SINGLE_TAP: break; /* ORYX_FN24_NUMDOT_SPACE_PATCH */
     }
     dance_state[5].step = 0;
 }
@@ -468,6 +475,7 @@ void dance_6_finished(tap_dance_state_t *state, void *user_data) {
     dance_state[6].step = dance_step(state);
     switch (dance_state[6].step) {
         case SINGLE_TAP: register_code16(LCTL(KC_S)); break;
+        case SINGLE_HOLD: register_code16(LCTL(KC_S)); break; /* ORYX_TAPHOLD_FALLBACK_PATCH */
         case DOUBLE_TAP: register_code16(LCTL(KC_S)); register_code16(LCTL(KC_S)); break;
         case DOUBLE_HOLD: register_code16(LALT(LCTL(LSFT(KC_5)))); break;
         case DOUBLE_SINGLE_TAP: tap_code16(LCTL(KC_S)); register_code16(LCTL(KC_S));
@@ -478,6 +486,7 @@ void dance_6_reset(tap_dance_state_t *state, void *user_data) {
     wait_ms(10);
     switch (dance_state[6].step) {
         case SINGLE_TAP: unregister_code16(LCTL(KC_S)); break;
+        case SINGLE_HOLD: unregister_code16(LCTL(KC_S)); break; /* ORYX_TAPHOLD_FALLBACK_PATCH */
         case DOUBLE_TAP: unregister_code16(LCTL(KC_S)); break;
         case DOUBLE_HOLD: unregister_code16(LALT(LCTL(LSFT(KC_5)))); break;
         case DOUBLE_SINGLE_TAP: unregister_code16(LCTL(KC_S)); break;
