@@ -6,7 +6,7 @@
 #define NO_AUTO_SHIFT_TAB
 #define NO_AUTO_SHIFT_ALPHA
 #define CAPS_LOCK_STATUS
-#define SERIAL_NUMBER "3aMQz/DzqEpZ"
+#define SERIAL_NUMBER "3aMQz/x9dGlp"
 #define LAYER_STATE_8BIT
 
 #define TAPPING_TERM_PER_KEY
