@@ -97,8 +97,7 @@ const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX_COLS] = {
 
 uint16_t get_tapping_term(uint16_t keycode, keyrecord_t *record) {
     switch (keycode) {
-        case TD(DANCE_0):
-            return TAPPING_TERM - 40;
+        case TD(DANCE_0): return (uint16_t)2000; /* ORYX_LANG_TAP_TERM_PATCH */
         case MT(MOD_RALT, KC_TAB):
             return TAPPING_TERM - 40;
         case TD(DANCE_1):
@@ -248,23 +247,23 @@ void dance_0_reset(tap_dance_state_t *state, void *user_data);
 
 void on_dance_0(tap_dance_state_t *state, void *user_data) {
     if(state->count == 3) {
-        tap_code16(LALT(KC_LEFT_SHIFT));
-        tap_code16(LALT(KC_LEFT_SHIFT));
-        tap_code16(LALT(KC_LEFT_SHIFT));
+        tap_code16(LALT(KC_LEFT_SHIFT)); custom_language_toggled(); /* ORYX_LANG_TOGGLE_PATCH */
+        tap_code16(LALT(KC_LEFT_SHIFT)); custom_language_toggled(); /* ORYX_LANG_TOGGLE_PATCH */
+        tap_code16(LALT(KC_LEFT_SHIFT)); custom_language_toggled(); /* ORYX_LANG_TOGGLE_PATCH */
     }
     if(state->count > 3) {
-        tap_code16(LALT(KC_LEFT_SHIFT));
+        tap_code16(LALT(KC_LEFT_SHIFT)); custom_language_toggled(); /* ORYX_LANG_TOGGLE_PATCH */
     }
 }
 
 void dance_0_finished(tap_dance_state_t *state, void *user_data) {
     dance_state[0].step = dance_step(state);
     switch (dance_state[0].step) {
-        case SINGLE_TAP: register_code16(LALT(KC_LEFT_SHIFT)); break;
-        case SINGLE_HOLD: register_code16(KC_LEFT_CTRL); break;
-        case DOUBLE_TAP: register_code16(LALT(KC_LEFT_SHIFT)); register_code16(LALT(KC_LEFT_SHIFT)); break;
-        case DOUBLE_HOLD: register_code16(KC_F23); break;
-        case DOUBLE_SINGLE_TAP: tap_code16(LALT(KC_LEFT_SHIFT)); register_code16(LALT(KC_LEFT_SHIFT));
+        case SINGLE_TAP: register_code16(LALT(KC_LEFT_SHIFT)); custom_language_toggled(); /* ORYX_LANG_TOGGLE_PATCH */ break;
+        case SINGLE_HOLD: custom_language_resync(); register_code16(KC_LEFT_CTRL); break; /* ORYX_LANG_RESYNC_PATCH */
+        case DOUBLE_TAP: register_code16(LALT(KC_LEFT_SHIFT)); custom_language_toggled(); /* ORYX_LANG_TOGGLE_PATCH */ register_code16(LALT(KC_LEFT_SHIFT)); custom_language_toggled(); /* ORYX_LANG_TOGGLE_PATCH */ break;
+        case DOUBLE_HOLD: custom_language_resync(); break; /* ORYX_LANG_RESYNC_PATCH */
+        case DOUBLE_SINGLE_TAP: tap_code16(LALT(KC_LEFT_SHIFT)); custom_language_toggled(); /* ORYX_LANG_TOGGLE_PATCH */ register_code16(LALT(KC_LEFT_SHIFT)); custom_language_toggled(); /* ORYX_LANG_TOGGLE_PATCH */
     }
 }
 
@@ -274,7 +273,7 @@ void dance_0_reset(tap_dance_state_t *state, void *user_data) {
         case SINGLE_TAP: unregister_code16(LALT(KC_LEFT_SHIFT)); break;
         case SINGLE_HOLD: unregister_code16(KC_LEFT_CTRL); break;
         case DOUBLE_TAP: unregister_code16(LALT(KC_LEFT_SHIFT)); break;
-        case DOUBLE_HOLD: unregister_code16(KC_F23); break;
+        case DOUBLE_HOLD: break; /* ORYX_LANG_RESYNC_PATCH */
         case DOUBLE_SINGLE_TAP: unregister_code16(LALT(KC_LEFT_SHIFT)); break;
     }
     dance_state[0].step = 0;
