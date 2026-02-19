@@ -272,7 +272,7 @@ def _patch_language_switch_tap_dance(content: str) -> tuple[str, bool, bool]:
         finished_body_new, single_tap_patched = _replace_case(
             finished_body_new,
             "SINGLE_TAP",
-            f"register_code16(LALT(KC_LEFT_SHIFT)); custom_language_toggled(); break; /* {LANGUAGE_TOGGLE_MARKER} */",
+            f"tap_code16(LALT(KC_LEFT_SHIFT)); custom_language_toggled(); break; /* {LANGUAGE_TOGGLE_MARKER} */",
         )
         if single_tap_patched:
             any_toggle_patch = True
@@ -307,6 +307,16 @@ def _patch_language_switch_tap_dance(content: str) -> tuple[str, bool, bool]:
     if has_reset:
         reset_body_new = reset_body
 
+        reset_body_new, _ = _replace_case(
+            reset_body_new,
+            "SINGLE_TAP",
+            "break;",
+        )
+        reset_body_new, _ = _replace_case(
+            reset_body_new,
+            "SINGLE_HOLD",
+            "unregister_code16(KC_LEFT_CTRL); break;",
+        )
         reset_body_new, _ = _replace_case(
             reset_body_new,
             "DOUBLE_TAP",
