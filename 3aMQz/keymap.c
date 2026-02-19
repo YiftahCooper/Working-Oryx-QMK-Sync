@@ -245,7 +245,7 @@ void on_dance_0(tap_dance_state_t *state, void *user_data) {
 void dance_0_finished(tap_dance_state_t *state, void *user_data) {
     dance_state[0].step = dance_step(state);
     switch (dance_state[0].step) {
-        case SINGLE_TAP: register_code16(LALT(KC_LEFT_SHIFT)); custom_language_toggled(); break; /* ORYX_LANG_TOGGLE_PATCH */
+        case SINGLE_TAP: tap_code16(LALT(KC_LEFT_SHIFT)); custom_language_toggled(); break; /* ORYX_LANG_TOGGLE_PATCH */
         case SINGLE_HOLD: register_code16(KC_LEFT_CTRL); break;
         case DOUBLE_TAP: custom_language_resync(); break; /* ORYX_LANG_RESYNC_PATCH */
         case DOUBLE_HOLD: custom_language_resync(); break; /* ORYX_LANG_RESYNC_PATCH */
@@ -256,7 +256,7 @@ void dance_0_finished(tap_dance_state_t *state, void *user_data) {
 void dance_0_reset(tap_dance_state_t *state, void *user_data) {
     wait_ms(10);
     switch (dance_state[0].step) {
-        case SINGLE_TAP: unregister_code16(LALT(KC_LEFT_SHIFT)); break;
+        case SINGLE_TAP: break;
         case SINGLE_HOLD: unregister_code16(KC_LEFT_CTRL); break;
         case DOUBLE_TAP: break; /* ORYX_LANG_RESYNC_PATCH */
         case DOUBLE_HOLD: break; /* ORYX_LANG_RESYNC_PATCH */
