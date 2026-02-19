@@ -11,7 +11,6 @@ TAPHOLD_COMPAT_MARKER = "ORYX_TAPHOLD_FALLBACK_PATCH"
 DOUBLETAP_COMPAT_MARKER = "ORYX_DOUBLETAP_FALLBACK_PATCH"
 SPACESHIFT_HOLD_PREF_MARKER = "ORYX_SPACESHIFT_HOLD_PREF_PATCH"
 SPACE_DOT_TERM_MARKER = "ORYX_SPACE_DOT_TERM_PATCH"
-LANGUAGE_SWITCH_DANCE_INDEX = 1
 LANGUAGE_SWITCH_TAPPING_TERM_MS = 2000
 SPACE_DOT_TERM_SCALE_NUM = 6
 SPACE_DOT_TERM_SCALE_DEN = 5
@@ -221,7 +220,15 @@ def _patch_language_switch_tap_dance(content: str) -> tuple[str, bool, bool]:
     any_toggle_patch = False
     any_resync_patch = False
 
-    finished_body, has_finished = _get_function_body(content, "dance_1_finished")
+    language_dance_idx = _find_language_switch_dance_index(content)
+    if language_dance_idx is None:
+        return content, any_toggle_patch, any_resync_patch
+
+    finished_name = f"dance_{language_dance_idx}_finished"
+    on_name = f"on_dance_{language_dance_idx}"
+    reset_name = f"dance_{language_dance_idx}_reset"
+
+    finished_body, has_finished = _get_function_body(content, finished_name)
     if has_finished:
         alt_shift_call = r"(?:register_code16|tap_code16)\s*\(\s*LALT\s*\(\s*KC_LEFT_SHIFT\s*\)\s*\)\s*;"
 
@@ -250,9 +257,9 @@ def _patch_language_switch_tap_dance(content: str) -> tuple[str, bool, bool]:
         if single_hold_resync_n > 0:
             any_resync_patch = True
 
-        content = _replace_function_body(content, "dance_1_finished", finished_body_new)
+        content = _replace_function_body(content, finished_name, finished_body_new)
 
-    on_body, has_on = _get_function_body(content, "on_dance_1")
+    on_body, has_on = _get_function_body(content, on_name)
     if has_on:
         alt_shift_tap_call = r"tap_code16\s*\(\s*LALT\s*\(\s*KC_LEFT_SHIFT\s*\)\s*\)\s*;"
 
@@ -262,9 +269,9 @@ def _patch_language_switch_tap_dance(content: str) -> tuple[str, bool, bool]:
         on_body_new, on_toggle_n = re.subn(alt_shift_tap_call, _append_toggle_on, on_body)
         if on_toggle_n > 0:
             any_toggle_patch = True
-            content = _replace_function_body(content, "on_dance_1", on_body_new)
+            content = _replace_function_body(content, on_name, on_body_new)
 
-    reset_body, has_reset = _get_function_body(content, "dance_1_reset")
+    reset_body, has_reset = _get_function_body(content, reset_name)
     if has_reset:
         reset_body_new, _ = re.subn(
             r"case\s+DOUBLE_HOLD\s*:\s*unregister_code16\s*\(\s*KC_F23\s*\)\s*;\s*break\s*;",
@@ -272,7 +279,7 @@ def _patch_language_switch_tap_dance(content: str) -> tuple[str, bool, bool]:
             reset_body,
             count=1,
         )
-        content = _replace_function_body(content, "dance_1_reset", reset_body_new)
+        content = _replace_function_body(content, reset_name, reset_body_new)
 
     return content, any_toggle_patch, any_resync_patch
 
@@ -447,6 +454,29 @@ def _increase_space_dot_tapping_term(content: str) -> tuple[str, bool]:
     return _replace_function_body(content, "get_tapping_term", tapping_body_new), True
 
 
+def _find_language_switch_dance_index(content: str) -> int | None:
+    """
+    Resolve the language-switch tap dance index from generated Oryx code.
+    Oryx can renumber dance slots across revisions.
+    """
+    for dance_idx in range(0, 24):
+        finished_name = f"dance_{dance_idx}_finished"
+        finished_body, has_finished = _get_function_body(content, finished_name)
+        if not has_finished:
+            continue
+
+        if "LALT(KC_LEFT_SHIFT)" in finished_body and "KC_F23" in finished_body:
+            return dance_idx
+
+    for dance_idx in range(0, 24):
+        finished_name = f"dance_{dance_idx}_finished"
+        finished_body, has_finished = _get_function_body(content, finished_name)
+        if has_finished and "LALT(KC_LEFT_SHIFT)" in finished_body:
+            return dance_idx
+
+    return None
+
+
 def _set_language_switch_tapping_term(content: str) -> tuple[str, bool]:
     """
     Set a very long tapping term for the language switch key so tap wins unless
@@ -456,14 +486,21 @@ def _set_language_switch_tapping_term(content: str) -> tuple[str, bool]:
     if not has_tapping:
         return content, False
 
-    if LANGUAGE_TAP_TERM_MARKER in tapping_body:
-        return content, True
+    language_dance_idx = _find_language_switch_dance_index(content)
+    if language_dance_idx is None:
+        return content, False
+
+    cleanup_pat = re.compile(
+        rf"^\s*case\s+TD\s*\(\s*DANCE_\d+\s*\)\s*:\s*return\s+[^;]+\s*;\s*/\*\s*{LANGUAGE_TAP_TERM_MARKER}\s*\*/\s*$",
+        flags=re.MULTILINE,
+    )
+    tapping_body = cleanup_pat.sub("", tapping_body)
 
     dance_case_pat = re.compile(
-        rf"case\s+TD\s*\(\s*DANCE_{LANGUAGE_SWITCH_DANCE_INDEX}\s*\)\s*:\s*return\s+[^;]+\s*;"
+        rf"case\s+TD\s*\(\s*DANCE_{language_dance_idx}\s*\)\s*:\s*return\s+[^;]+\s*;"
     )
     replacement = (
-        f"case TD(DANCE_{LANGUAGE_SWITCH_DANCE_INDEX}): "
+        f"case TD(DANCE_{language_dance_idx}): "
         f"return (uint16_t){LANGUAGE_SWITCH_TAPPING_TERM_MS}; "
         f"/* {LANGUAGE_TAP_TERM_MARKER} */"
     )
@@ -476,7 +513,7 @@ def _set_language_switch_tapping_term(content: str) -> tuple[str, bool]:
     def _insert_before_default(match: re.Match[str]) -> str:
         indent = match.group("indent")
         return (
-            f"{indent}case TD(DANCE_{LANGUAGE_SWITCH_DANCE_INDEX}): "
+            f"{indent}case TD(DANCE_{language_dance_idx}): "
             f"return (uint16_t){LANGUAGE_SWITCH_TAPPING_TERM_MS}; "
             f"/* {LANGUAGE_TAP_TERM_MARKER} */\n"
             f"{indent}default:"
