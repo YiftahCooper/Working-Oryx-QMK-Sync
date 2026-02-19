@@ -105,7 +105,7 @@ jobs:
           cp custom_qmk/custom_code.c oryx_source/
           
           # Run python patch script
-          python3 scripts/patch_keymap.py oryx_source custom_qmk/custom_code.c
+          python3 scripts/patch_keymap.py oryx_source
           
           # Replace repo snapshot with freshly downloaded+patched files.
           # Important: if layout folder already exists, `mv oryx_source <layout_id>` would

@@ -1,6 +1,7 @@
 import os
 import re
 import sys
+from typing import Callable
 
 PATCH_MARKER = "ORYX_FN24_NUMDOT_SPACE_PATCH"
 LANGUAGE_TOGGLE_MARKER = "ORYX_LANG_TOGGLE_PATCH"
@@ -137,30 +138,46 @@ def _get_function_body(content: str, function_name: str) -> tuple[str, bool]:
     return content[open_brace_idx + 1 : close_brace_idx], True
 
 
-def _replace_fn24_in_space_tap_dance(content: str) -> tuple[str, bool]:
+def _discover_dance_indices(content: str) -> list[int]:
+    """
+    Discover tap-dance indices present in the generated keymap so downstream
+    patch passes do not repeatedly scan a hardcoded numeric range.
+    """
+    indices = {
+        int(m.group(1))
+        for m in re.finditer(r"\bdance_(\d+)_(?:finished|reset)\s*\(", content)
+    }
+    if indices:
+        return sorted(indices)
+    # Fallback for unexpected source layouts.
+    return list(range(0, 24))
+
+
+def _replace_case_block(body: str, case_name: str, replacement_builder: Callable[[str], str]) -> tuple[str, bool]:
+    """
+    Replace one switch-case block while preserving indentation.
+    """
+    case_pat = re.compile(
+        rf"(?P<indent>^[ \t]*)case\s+{re.escape(case_name)}\s*:\s*.*?(?=^[ \t]*case\s+|^[ \t]*default\s*:|}})",
+        flags=re.MULTILINE | re.DOTALL,
+    )
+    match = case_pat.search(body)
+    if not match:
+        return body, False
+
+    indent = match.group("indent")
+    replacement = replacement_builder(indent)
+    body_new = case_pat.sub(replacement + "\n", body, count=1)
+    return body_new, True
+
+
+def _replace_fn24_in_space_tap_dance(content: str, dance_indices: list[int]) -> tuple[str, bool]:
     """
     Replace FN24 in the generated right-thumb tap dance with:
       DOUBLE_TAP and DOUBLE_SINGLE_TAP => num-dot then space.
     Target only dance_<n>_finished/reset function bodies.
     """
-    def _replace_case(
-        body: str,
-        case_name: str,
-        replacement_builder: callable,
-    ) -> tuple[str, bool]:
-        case_pat = re.compile(
-            rf"(?P<indent>^[ \t]*)case\s+{case_name}\s*:\s*.*?(?=^[ \t]*case\s+|^[ \t]*default\s*:|}})",
-            flags=re.MULTILINE | re.DOTALL,
-        )
-        match = case_pat.search(body)
-        if not match:
-            return body, False
-
-        indent = match.group("indent")
-        replacement = replacement_builder(indent)
-        return case_pat.sub(replacement + "\n", body, count=1), True
-
-    for dance_idx in range(0, 24):
+    for dance_idx in dance_indices:
         finished_name = f"dance_{dance_idx}_finished"
         reset_name = f"dance_{dance_idx}_reset"
 
@@ -172,7 +189,7 @@ def _replace_fn24_in_space_tap_dance(content: str) -> tuple[str, bool]:
             continue
 
         finished_body_new = finished_body
-        finished_body_new, replaced_double_tap = _replace_case(
+        finished_body_new, replaced_double_tap = _replace_case_block(
             finished_body_new,
             "DOUBLE_TAP",
             lambda indent: (
@@ -180,7 +197,7 @@ def _replace_fn24_in_space_tap_dance(content: str) -> tuple[str, bool]:
                 f"break; /* {PATCH_MARKER} */"
             ),
         )
-        finished_body_new, replaced_double_single = _replace_case(
+        finished_body_new, replaced_double_single = _replace_case_block(
             finished_body_new,
             "DOUBLE_SINGLE_TAP",
             lambda indent: (
@@ -197,12 +214,12 @@ def _replace_fn24_in_space_tap_dance(content: str) -> tuple[str, bool]:
         reset_body, has_reset = _get_function_body(content, reset_name)
         if has_reset:
             reset_body_new = reset_body
-            reset_body_new, _ = _replace_case(
+            reset_body_new, _ = _replace_case_block(
                 reset_body_new,
                 "DOUBLE_TAP",
                 lambda indent: f"{indent}case DOUBLE_TAP: break; /* {PATCH_MARKER} */",
             )
-            reset_body_new, _ = _replace_case(
+            reset_body_new, _ = _replace_case_block(
                 reset_body_new,
                 "DOUBLE_SINGLE_TAP",
                 lambda indent: f"{indent}case DOUBLE_SINGLE_TAP: break; /* {PATCH_MARKER} */",
@@ -235,7 +252,7 @@ def _inject_custom_language_prototypes(content: str) -> tuple[str, bool]:
     return content[:insert_idx] + prototype_block + content[insert_idx:], True
 
 
-def _patch_language_switch_tap_dance(content: str) -> tuple[str, bool, bool]:
+def _patch_language_switch_tap_dance(content: str, dance_indices: list[int]) -> tuple[str, bool, bool]:
     """
     Enforce language key semantics:
       - SINGLE_TAP: language toggle
@@ -245,20 +262,7 @@ def _patch_language_switch_tap_dance(content: str) -> tuple[str, bool, bool]:
     any_toggle_patch = False
     any_resync_patch = False
 
-    def _replace_case(body: str, case_name: str, replacement: str) -> tuple[str, bool]:
-        case_pat = re.compile(
-            rf"(?P<indent>^[ \t]*)case\s+{case_name}\s*:\s*.*?(?=^[ \t]*case\s+|^[ \t]*default\s*:|}})",
-            flags=re.MULTILINE | re.DOTALL,
-        )
-        match = case_pat.search(body)
-        if not match:
-            return body, False
-
-        indent = match.group("indent")
-        body_new = case_pat.sub(f"{indent}case {case_name}: {replacement}\n", body, count=1)
-        return body_new, True
-
-    language_dance_idx = _find_language_switch_dance_index(content)
+    language_dance_idx = _find_language_switch_dance_index(content, dance_indices)
     if language_dance_idx is None:
         return content, any_toggle_patch, any_resync_patch
 
@@ -269,34 +273,46 @@ def _patch_language_switch_tap_dance(content: str) -> tuple[str, bool, bool]:
     if has_finished:
         finished_body_new = finished_body
 
-        finished_body_new, single_tap_patched = _replace_case(
+        finished_body_new, single_tap_patched = _replace_case_block(
             finished_body_new,
             "SINGLE_TAP",
-            f"tap_code16(LALT(KC_LEFT_SHIFT)); custom_language_toggled(); break; /* {LANGUAGE_TOGGLE_MARKER} */",
+            lambda indent: (
+                f"{indent}case SINGLE_TAP: tap_code16(LALT(KC_LEFT_SHIFT)); "
+                f"custom_language_toggled(); break; /* {LANGUAGE_TOGGLE_MARKER} */"
+            ),
         )
         if single_tap_patched:
             any_toggle_patch = True
 
-        finished_body_new, _ = _replace_case(
+        finished_body_new, _ = _replace_case_block(
             finished_body_new,
             "SINGLE_HOLD",
-            "register_code16(KC_LEFT_CTRL); break;",
+            lambda indent: f"{indent}case SINGLE_HOLD: register_code16(KC_LEFT_CTRL); break;",
         )
 
-        finished_body_new, double_tap_patched = _replace_case(
+        finished_body_new, double_tap_patched = _replace_case_block(
             finished_body_new,
             "DOUBLE_TAP",
-            f"custom_language_resync(); break; /* {LANGUAGE_RESYNC_MARKER} */",
+            lambda indent: (
+                f"{indent}case DOUBLE_TAP: custom_language_resync(); "
+                f"break; /* {LANGUAGE_RESYNC_MARKER} */"
+            ),
         )
-        finished_body_new, double_single_patched = _replace_case(
+        finished_body_new, double_single_patched = _replace_case_block(
             finished_body_new,
             "DOUBLE_SINGLE_TAP",
-            f"custom_language_resync(); break; /* {LANGUAGE_RESYNC_MARKER} */",
+            lambda indent: (
+                f"{indent}case DOUBLE_SINGLE_TAP: custom_language_resync(); "
+                f"break; /* {LANGUAGE_RESYNC_MARKER} */"
+            ),
         )
-        finished_body_new, double_hold_patched = _replace_case(
+        finished_body_new, double_hold_patched = _replace_case_block(
             finished_body_new,
             "DOUBLE_HOLD",
-            f"custom_language_resync(); break; /* {LANGUAGE_RESYNC_MARKER} */",
+            lambda indent: (
+                f"{indent}case DOUBLE_HOLD: custom_language_resync(); "
+                f"break; /* {LANGUAGE_RESYNC_MARKER} */"
+            ),
         )
         if double_tap_patched or double_single_patched or double_hold_patched:
             any_resync_patch = True
@@ -307,30 +323,30 @@ def _patch_language_switch_tap_dance(content: str) -> tuple[str, bool, bool]:
     if has_reset:
         reset_body_new = reset_body
 
-        reset_body_new, _ = _replace_case(
+        reset_body_new, _ = _replace_case_block(
             reset_body_new,
             "SINGLE_TAP",
-            "break;",
+            lambda indent: f"{indent}case SINGLE_TAP: break;",
         )
-        reset_body_new, _ = _replace_case(
+        reset_body_new, _ = _replace_case_block(
             reset_body_new,
             "SINGLE_HOLD",
-            "unregister_code16(KC_LEFT_CTRL); break;",
+            lambda indent: f"{indent}case SINGLE_HOLD: unregister_code16(KC_LEFT_CTRL); break;",
         )
-        reset_body_new, _ = _replace_case(
+        reset_body_new, _ = _replace_case_block(
             reset_body_new,
             "DOUBLE_TAP",
-            f"break; /* {LANGUAGE_RESYNC_MARKER} */",
+            lambda indent: f"{indent}case DOUBLE_TAP: break; /* {LANGUAGE_RESYNC_MARKER} */",
         )
-        reset_body_new, _ = _replace_case(
+        reset_body_new, _ = _replace_case_block(
             reset_body_new,
             "DOUBLE_SINGLE_TAP",
-            f"break; /* {LANGUAGE_RESYNC_MARKER} */",
+            lambda indent: f"{indent}case DOUBLE_SINGLE_TAP: break; /* {LANGUAGE_RESYNC_MARKER} */",
         )
-        reset_body_new, _ = _replace_case(
+        reset_body_new, _ = _replace_case_block(
             reset_body_new,
             "DOUBLE_HOLD",
-            f"break; /* {LANGUAGE_RESYNC_MARKER} */",
+            lambda indent: f"{indent}case DOUBLE_HOLD: break; /* {LANGUAGE_RESYNC_MARKER} */",
         )
         content = _replace_function_body(content, reset_name, reset_body_new)
 
@@ -381,14 +397,14 @@ def _clone_single_tap_to_single_hold(body: str) -> tuple[str, bool]:
     return body[: single_tap_case.start()] + injected_case + body[single_tap_case.end() :], True
 
 
-def _normalize_tap_dance_hold_resolution(content: str) -> tuple[str, int]:
+def _normalize_tap_dance_hold_resolution(content: str, dance_indices: list[int]) -> tuple[str, int]:
     """
     For tap-dance keys that have SINGLE_TAP but no SINGLE_HOLD branch, mirror the
     old keymap behavior by treating SINGLE_HOLD as SINGLE_TAP.
     """
     patched_finished = 0
 
-    for dance_idx in range(0, 24):
+    for dance_idx in dance_indices:
         finished_name = f"dance_{dance_idx}_finished"
         finished_body, has_finished = _get_function_body(content, finished_name)
         if not has_finished:
@@ -413,12 +429,12 @@ def _normalize_tap_dance_hold_resolution(content: str) -> tuple[str, int]:
     return content, patched_finished
 
 
-def _prefer_hold_for_space_shift_dance(content: str) -> tuple[str, bool]:
+def _prefer_hold_for_space_shift_dance(content: str, dance_indices: list[int]) -> tuple[str, bool]:
     """
     For the dance that is SPACE on tap and SHIFT on hold, prefer hold when
     the key is interrupted by another key (fast chord typing).
     """
-    for dance_idx in range(0, 24):
+    for dance_idx in dance_indices:
         finished_name = f"dance_{dance_idx}_finished"
         finished_body, has_finished = _get_function_body(content, finished_name)
         if not has_finished:
@@ -452,13 +468,13 @@ def _prefer_hold_for_space_shift_dance(content: str) -> tuple[str, bool]:
     return content, False
 
 
-def _increase_space_dot_tapping_term(content: str) -> tuple[str, bool]:
+def _increase_space_dot_tapping_term(content: str, dance_indices: list[int]) -> tuple[str, bool]:
     """
     Increase the dot+space dance tapping term by ~20%.
     Targets the same dance that was patched from KC_F24 to KP_DOT+SPACE.
     """
     target_dance_idx = None
-    for dance_idx in range(0, 24):
+    for dance_idx in dance_indices:
         finished_name = f"dance_{dance_idx}_finished"
         finished_body, has_finished = _get_function_body(content, finished_name)
         if has_finished and PATCH_MARKER in finished_body:
@@ -507,12 +523,12 @@ def _increase_space_dot_tapping_term(content: str) -> tuple[str, bool]:
     return _replace_function_body(content, "get_tapping_term", tapping_body_new), True
 
 
-def _find_language_switch_dance_index(content: str) -> int | None:
+def _find_language_switch_dance_index(content: str, dance_indices: list[int]) -> int | None:
     """
     Resolve the language-switch tap dance index from generated Oryx code.
     Oryx can renumber dance slots across revisions.
     """
-    for dance_idx in range(0, 24):
+    for dance_idx in dance_indices:
         finished_name = f"dance_{dance_idx}_finished"
         finished_body, has_finished = _get_function_body(content, finished_name)
         if not has_finished:
@@ -521,7 +537,7 @@ def _find_language_switch_dance_index(content: str) -> int | None:
         if "LALT(KC_LEFT_SHIFT)" in finished_body and "KC_F23" in finished_body:
             return dance_idx
 
-    for dance_idx in range(0, 24):
+    for dance_idx in dance_indices:
         finished_name = f"dance_{dance_idx}_finished"
         finished_body, has_finished = _get_function_body(content, finished_name)
         if has_finished and "LALT(KC_LEFT_SHIFT)" in finished_body:
@@ -530,7 +546,7 @@ def _find_language_switch_dance_index(content: str) -> int | None:
     return None
 
 
-def _set_language_switch_tapping_term(content: str) -> tuple[str, bool]:
+def _set_language_switch_tapping_term(content: str, dance_indices: list[int]) -> tuple[str, bool]:
     """
     Set a very long tapping term for the language switch key so tap wins unless
     the key is intentionally held for around two seconds.
@@ -539,7 +555,7 @@ def _set_language_switch_tapping_term(content: str) -> tuple[str, bool]:
     if not has_tapping:
         return content, False
 
-    language_dance_idx = _find_language_switch_dance_index(content)
+    language_dance_idx = _find_language_switch_dance_index(content, dance_indices)
     if language_dance_idx is None:
         return content, False
 
@@ -633,14 +649,14 @@ def _clone_double_tap_to_double_single(body: str) -> tuple[str, bool]:
     return body_new, True
 
 
-def _normalize_tap_dance_double_tap_resolution(content: str) -> tuple[str, int]:
+def _normalize_tap_dance_double_tap_resolution(content: str, dance_indices: list[int]) -> tuple[str, int]:
     """
     Treat interrupted doubles (DOUBLE_SINGLE_TAP) like DOUBLE_TAP for dances
     that do not define DOUBLE_HOLD behavior.
     """
     patched_finished = 0
 
-    for dance_idx in range(0, 24):
+    for dance_idx in dance_indices:
         finished_name = f"dance_{dance_idx}_finished"
         finished_body, has_finished = _get_function_body(content, finished_name)
         if not has_finished:
@@ -693,7 +709,7 @@ def _relax_aggressive_tapping_terms(content: str) -> tuple[str, int]:
     return _replace_function_body(content, "get_tapping_term", body_new), changes
 
 
-def patch_keymap(layout_dir: str, custom_code_path: str) -> None:
+def patch_keymap(layout_dir: str) -> None:
     keymap_path = os.path.join(layout_dir, "keymap.c")
     if not os.path.exists(keymap_path):
         print(f"Error: {keymap_path} not found")
@@ -706,12 +722,14 @@ def patch_keymap(layout_dir: str, custom_code_path: str) -> None:
         content = f.read()
 
     print("Found keymap.c, length:", len(content))
+    dance_indices = _discover_dance_indices(content)
+    print(f"Discovered tap-dance indices: {dance_indices}")
 
     # 1) Add forward declarations for custom language hooks.
     content, _ = _inject_custom_language_prototypes(content)
 
     # 2) Replace FN24 behavior only in the corresponding tap-dance function.
-    content, replaced = _replace_fn24_in_space_tap_dance(content)
+    content, replaced = _replace_fn24_in_space_tap_dance(content, dance_indices)
     if replaced:
         print("Replaced KC_F24 tap-dance behavior with KP_DOT+SPACE on double tap")
     elif "KC_F24" in content:
@@ -720,7 +738,7 @@ def patch_keymap(layout_dir: str, custom_code_path: str) -> None:
         print("KC_F24 not present in keymap.c; no FN24 tap-dance replacement needed.")
 
     # 3) Patch language switch/resync hooks on the language tap-dance key.
-    content, lang_toggle_patched, lang_resync_patched = _patch_language_switch_tap_dance(content)
+    content, lang_toggle_patched, lang_resync_patched = _patch_language_switch_tap_dance(content, dance_indices)
     if lang_toggle_patched:
         print("Patched language key single-tap toggle behavior")
     else:
@@ -739,14 +757,14 @@ def patch_keymap(layout_dir: str, custom_code_path: str) -> None:
         print("Warning: rgb_matrix_indicators_user not found; language RGB indicator hook not applied.")
 
     # 5) For the SPACE/SHIFT dance, prefer hold when interrupted by another key.
-    content, spaceshift_hold_pref_patched = _prefer_hold_for_space_shift_dance(content)
+    content, spaceshift_hold_pref_patched = _prefer_hold_for_space_shift_dance(content, dance_indices)
     if spaceshift_hold_pref_patched:
         print("Patched SPACE/SHIFT dance to prefer hold on interrupt")
     else:
         print("Warning: Could not patch SPACE/SHIFT hold-preference behavior.")
 
     # 6) For dances without explicit hold behavior, treat SINGLE_HOLD as SINGLE_TAP.
-    content, hold_fallback_count = _normalize_tap_dance_hold_resolution(content)
+    content, hold_fallback_count = _normalize_tap_dance_hold_resolution(content, dance_indices)
     if hold_fallback_count > 0:
         print(f"Added SINGLE_HOLD->SINGLE_TAP fallback to {hold_fallback_count} tap-dance handlers")
     else:
@@ -754,7 +772,7 @@ def patch_keymap(layout_dir: str, custom_code_path: str) -> None:
 
     # 7) For dances without explicit double-hold behavior, treat DOUBLE_SINGLE_TAP
     # as DOUBLE_TAP so interrupted doubles still trigger the double function.
-    content, doubletap_fallback_count = _normalize_tap_dance_double_tap_resolution(content)
+    content, doubletap_fallback_count = _normalize_tap_dance_double_tap_resolution(content, dance_indices)
     if doubletap_fallback_count > 0:
         print(f"Added DOUBLE_SINGLE_TAP->DOUBLE_TAP fallback to {doubletap_fallback_count} tap-dance handlers")
     else:
@@ -762,32 +780,61 @@ def patch_keymap(layout_dir: str, custom_code_path: str) -> None:
 
     # 8) Keep tapping terms entirely Oryx-managed for now.
     print("Skipping script-level tapping-term overrides (using Oryx tap terms).")
+    # Tap-term overrides are intentionally disabled for now.
+    # To re-enable, uncomment the block below:
+    # content, space_dot_term_patched = _increase_space_dot_tapping_term(content, dance_indices)
+    # if space_dot_term_patched:
+    #     print("Raised dot+space dance tapping term by ~20%")
+    # else:
+    #     print("Warning: Could not raise dot+space dance tapping term.")
+    #
+    # content, language_term_patched = _set_language_switch_tapping_term(content, dance_indices)
+    # if language_term_patched:
+    #     print(f"Set language switch tapping term to {LANGUAGE_SWITCH_TAPPING_TERM_MS}ms")
+    # else:
+    #     print("Warning: Could not set language switch tapping term.")
+    #
+    # if RELAX_AGGRESSIVE_TAPPING_TERMS:
+    #     content, tapping_term_changes = _relax_aggressive_tapping_terms(content)
+    #     if tapping_term_changes > 0:
+    #         print(
+    #             f"Relaxed {tapping_term_changes} aggressive per-key tapping-term reductions "
+    #             f"(max subtract: {MAX_TAPPING_TERM_SUBTRACT})"
+    #         )
+    #     else:
+    #         print("No aggressive per-key tapping-term reductions required patching.")
+    # else:
+    #     print("Keeping Oryx per-key tapping terms unchanged.")
 
     # 9) Hook process_record_user
-    pattern = r"bool\s+process_record_user\s*\("
-    if not re.search(pattern, content):
-        print("Error: Could not find process_record_user in keymap.c")
-        print("File start:", content[:500])
-        sys.exit(1)
+    wrapper_marker = "INJECTED BY ORYX-CUSTOM-MOONLANDER WORKFLOW"
+    if wrapper_marker in content and '#include "custom_code.c"' in content:
+        print("process_record_user wrapper already injected; skipping reinjection.")
+    else:
+        pattern = r"bool\s+process_record_user\s*\("
+        if not re.search(pattern, content):
+            print("Error: Could not find process_record_user in keymap.c")
+            print("File start:", content[:500])
+            sys.exit(1)
 
-    content = re.sub(pattern, "bool process_record_user_oryx(", content, count=1)
+        content = re.sub(pattern, "bool process_record_user_oryx(", content, count=1)
 
-    wrapper_code = (
-        "\n\n// ============================================================\n"
-        "// INJECTED BY ORYX-CUSTOM-MOONLANDER WORKFLOW\n"
-        "// ============================================================\n"
-        "bool process_record_user_oryx(uint16_t keycode, keyrecord_t *record);\n"
-        '#include "custom_code.c"\n'
-        + "\n"
-        "bool process_record_user(uint16_t keycode, keyrecord_t *record) {\n"
-        "    if (!process_record_user_custom(keycode, record)) {\n"
-        "        return false;\n"
-        "    }\n"
-        "    return process_record_user_oryx(keycode, record);\n"
-        "}\n"
-    )
+        wrapper_code = (
+            "\n\n// ============================================================\n"
+            "// INJECTED BY ORYX-CUSTOM-MOONLANDER WORKFLOW\n"
+            "// ============================================================\n"
+            "bool process_record_user_oryx(uint16_t keycode, keyrecord_t *record);\n"
+            '#include "custom_code.c"\n'
+            + "\n"
+            "bool process_record_user(uint16_t keycode, keyrecord_t *record) {\n"
+            "    if (!process_record_user_custom(keycode, record)) {\n"
+            "        return false;\n"
+            "    }\n"
+            "    return process_record_user_oryx(keycode, record);\n"
+            "}\n"
+        )
 
-    content += wrapper_code
+        content += wrapper_code
 
     with open(keymap_path, "w", encoding="utf-8") as f:
         f.write(content)
@@ -796,7 +843,7 @@ def patch_keymap(layout_dir: str, custom_code_path: str) -> None:
 
 
 if __name__ == "__main__":
-    if len(sys.argv) < 3:
-        print("Usage: patch_keymap.py <layout_dir> <custom_code_path>")
+    if len(sys.argv) < 2:
+        print("Usage: patch_keymap.py <layout_dir>")
         sys.exit(1)
-    patch_keymap(sys.argv[1], sys.argv[2])
+    patch_keymap(sys.argv[1])
