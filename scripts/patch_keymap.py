@@ -8,6 +8,7 @@ LANGUAGE_TOGGLE_MARKER = "ORYX_LANG_TOGGLE_PATCH"
 LANGUAGE_RESYNC_MARKER = "ORYX_LANG_RESYNC_PATCH"
 LANGUAGE_RGB_MARKER = "ORYX_LANG_RGB_PATCH"
 LANGUAGE_HOLD_PREF_MARKER = "ORYX_LANG_HOLD_PREF_PATCH"
+LANGUAGE_ON_DANCE_NOOP_MARKER = "ORYX_LANG_ON_DANCE_NOOP_PATCH"
 LANGUAGE_TAP_TERM_MARKER = "ORYX_LANG_TAP_TERM_PATCH"
 TAPHOLD_COMPAT_MARKER = "ORYX_TAPHOLD_FALLBACK_PATCH"
 DOUBLETAP_COMPAT_MARKER = "ORYX_DOUBLETAP_FALLBACK_PATCH"
@@ -267,8 +268,19 @@ def _patch_language_switch_tap_dance(content: str, dance_indices: list[int]) -> 
     if language_dance_idx is None:
         return content, any_toggle_patch, any_resync_patch
 
+    on_name = f"on_dance_{language_dance_idx}"
     finished_name = f"dance_{language_dance_idx}_finished"
     reset_name = f"dance_{language_dance_idx}_reset"
+
+    on_body, has_on = _get_function_body(content, on_name)
+    if has_on and LANGUAGE_ON_DANCE_NOOP_MARKER not in on_body:
+        on_body_new = (
+            "\n"
+            "    // Disable generated multi-tap side effects on language key.\n"
+            "    (void)state;\n"
+            f"    (void)user_data; /* {LANGUAGE_ON_DANCE_NOOP_MARKER} */\n"
+        )
+        content = _replace_function_body(content, on_name, on_body_new)
 
     finished_body, has_finished = _get_function_body(content, finished_name)
     if has_finished:
