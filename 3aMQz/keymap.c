@@ -44,11 +44,11 @@ enum tap_dance_codes {
   DANCE_3,
 };
 
-#define DUAL_FUNC_0 LT(4, KC_8)
-#define DUAL_FUNC_1 LT(12, KC_E)
-#define DUAL_FUNC_2 LT(13, KC_K)
-#define DUAL_FUNC_3 LT(8, KC_F12)
-#define DUAL_FUNC_4 LT(12, KC_9)
+#define DUAL_FUNC_0 LT(9, KC_F15)
+#define DUAL_FUNC_1 LT(5, KC_F10)
+#define DUAL_FUNC_2 LT(4, KC_F15)
+#define DUAL_FUNC_3 LT(3, KC_C)
+#define DUAL_FUNC_4 LT(2, KC_N)
 
 const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX_COLS] = {
   [0] = LAYOUT_moonlander(
@@ -97,24 +97,10 @@ const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX_COLS] = {
 
 uint16_t get_tapping_term(uint16_t keycode, keyrecord_t *record) {
     switch (keycode) {
-        case TD(DANCE_0): return (uint16_t)2000; /* ORYX_LANG_TAP_TERM_PATCH */
-        case MT(MOD_RALT, KC_TAB):
-            return TAPPING_TERM - 40;
-        case TD(DANCE_1):
-            return TAPPING_TERM - 40;
-        case MT(MOD_RCTL, KC_PSCR):
-            return TAPPING_TERM - 40;
-        case MEH_T(KC_PAGE_UP):
-            return TAPPING_TERM - 40;
-        case ALL_T(KC_PGDN):
-            return TAPPING_TERM - 40;
-        case DUAL_FUNC_2:
-            return TAPPING_TERM - 40;
         case KC_DELETE:
-            return TAPPING_TERM - 40;
+            return TAPPING_TERM -120;
         case KC_BSPC:
-            return TAPPING_TERM - 40;
-        case TD(DANCE_2): return (uint16_t)(((TAPPING_TERM -134) * 6) / 5); /* ORYX_SPACE_DOT_TERM_PATCH */
+            return TAPPING_TERM -120;
         default:
             return TAPPING_TERM;
     }
@@ -247,24 +233,24 @@ void dance_0_reset(tap_dance_state_t *state, void *user_data);
 
 void on_dance_0(tap_dance_state_t *state, void *user_data) {
     if(state->count == 3) {
-        tap_code16(LALT(KC_LEFT_SHIFT)); custom_language_toggled(); /* ORYX_LANG_TOGGLE_PATCH */
-        tap_code16(LALT(KC_LEFT_SHIFT)); custom_language_toggled(); /* ORYX_LANG_TOGGLE_PATCH */
-        tap_code16(LALT(KC_LEFT_SHIFT)); custom_language_toggled(); /* ORYX_LANG_TOGGLE_PATCH */
+        tap_code16(LALT(KC_LEFT_SHIFT));
+        tap_code16(LALT(KC_LEFT_SHIFT));
+        tap_code16(LALT(KC_LEFT_SHIFT));
     }
     if(state->count > 3) {
-        tap_code16(LALT(KC_LEFT_SHIFT)); custom_language_toggled(); /* ORYX_LANG_TOGGLE_PATCH */
+        tap_code16(LALT(KC_LEFT_SHIFT));
     }
 }
 
 void dance_0_finished(tap_dance_state_t *state, void *user_data) {
     dance_state[0].step = dance_step(state);
     switch (dance_state[0].step) {
-        case SINGLE_TAP: register_code16(LALT(KC_LEFT_SHIFT)); custom_language_toggled(); /* ORYX_LANG_TOGGLE_PATCH */ break;
-        case SINGLE_HOLD: custom_language_resync(); register_code16(KC_LEFT_CTRL); break; /* ORYX_LANG_RESYNC_PATCH */
-        case DOUBLE_TAP: register_code16(LALT(KC_LEFT_SHIFT)); custom_language_toggled(); /* ORYX_LANG_TOGGLE_PATCH */ register_code16(LALT(KC_LEFT_SHIFT)); custom_language_toggled(); /* ORYX_LANG_TOGGLE_PATCH */ break;
+        case SINGLE_TAP: register_code16(LALT(KC_LEFT_SHIFT)); custom_language_toggled(); break; /* ORYX_LANG_TOGGLE_PATCH */
+        case SINGLE_HOLD: register_code16(KC_LEFT_CTRL); break;
+        case DOUBLE_TAP: custom_language_resync(); break; /* ORYX_LANG_RESYNC_PATCH */
         case DOUBLE_HOLD: custom_language_resync(); break; /* ORYX_LANG_RESYNC_PATCH */
-        case DOUBLE_SINGLE_TAP: tap_code16(LALT(KC_LEFT_SHIFT)); custom_language_toggled(); /* ORYX_LANG_TOGGLE_PATCH */ register_code16(LALT(KC_LEFT_SHIFT)); custom_language_toggled(); /* ORYX_LANG_TOGGLE_PATCH */
-    }
+        case DOUBLE_SINGLE_TAP: custom_language_resync(); break; /* ORYX_LANG_RESYNC_PATCH */
+}
 }
 
 void dance_0_reset(tap_dance_state_t *state, void *user_data) {
@@ -272,10 +258,10 @@ void dance_0_reset(tap_dance_state_t *state, void *user_data) {
     switch (dance_state[0].step) {
         case SINGLE_TAP: unregister_code16(LALT(KC_LEFT_SHIFT)); break;
         case SINGLE_HOLD: unregister_code16(KC_LEFT_CTRL); break;
-        case DOUBLE_TAP: unregister_code16(LALT(KC_LEFT_SHIFT)); break;
+        case DOUBLE_TAP: break; /* ORYX_LANG_RESYNC_PATCH */
         case DOUBLE_HOLD: break; /* ORYX_LANG_RESYNC_PATCH */
-        case DOUBLE_SINGLE_TAP: unregister_code16(LALT(KC_LEFT_SHIFT)); break;
-    }
+        case DOUBLE_SINGLE_TAP: break; /* ORYX_LANG_RESYNC_PATCH */
+}
     dance_state[0].step = 0;
 }
 void on_dance_1(tap_dance_state_t *state, void *user_data);
@@ -303,8 +289,8 @@ void dance_1_finished(tap_dance_state_t *state, void *user_data) {
         case SINGLE_TAP: register_code16(KC_SPACE); break;
         case SINGLE_HOLD: register_code16(KC_LEFT_SHIFT); break;
         case DOUBLE_TAP: register_code16(KC_CAPS); break;
-        case DOUBLE_SINGLE_TAP: register_code16(KC_CAPS); break; /* ORYX_DOUBLETAP_FALLBACK_PATCH */tap_code16(KC_SPACE); register_code16(KC_SPACE);
-    }
+        case DOUBLE_SINGLE_TAP: register_code16(KC_CAPS); break; /* ORYX_DOUBLETAP_FALLBACK_PATCH */
+}
 }
 
 void dance_1_reset(tap_dance_state_t *state, void *user_data) {
@@ -313,8 +299,8 @@ void dance_1_reset(tap_dance_state_t *state, void *user_data) {
         case SINGLE_TAP: unregister_code16(KC_SPACE); break;
         case SINGLE_HOLD: unregister_code16(KC_LEFT_SHIFT); break;
         case DOUBLE_TAP: unregister_code16(KC_CAPS); break;
-        case DOUBLE_SINGLE_TAP: unregister_code16(KC_CAPS); break; /* ORYX_DOUBLETAP_FALLBACK_PATCH */unregister_code16(KC_SPACE); break;
-    }
+        case DOUBLE_SINGLE_TAP: unregister_code16(KC_CAPS); break; /* ORYX_DOUBLETAP_FALLBACK_PATCH */
+}
     dance_state[1].step = 0;
 }
 void on_dance_2(tap_dance_state_t *state, void *user_data);
@@ -338,7 +324,8 @@ void dance_2_finished(tap_dance_state_t *state, void *user_data) {
         case SINGLE_TAP: register_code16(KC_SPACE); break;
         case SINGLE_HOLD: register_code16(KC_SPACE); break; /* ORYX_TAPHOLD_FALLBACK_PATCH */
         case DOUBLE_TAP: tap_code16(KC_KP_DOT); tap_code16(KC_SPACE); break; /* ORYX_FN24_NUMDOT_SPACE_PATCH */
-        case DOUBLE_SINGLE_TAP: tap_code16(KC_KP_DOT); tap_code16(KC_SPACE); break; /* ORYX_DOUBLETAP_FALLBACK_PATCH */tap_code16(KC_KP_DOT); tap_code16(KC_SPACE); break; /* ORYX_FN24_NUMDOT_SPACE_PATCH */}
+        case DOUBLE_SINGLE_TAP: tap_code16(KC_KP_DOT); tap_code16(KC_SPACE); break; /* ORYX_FN24_NUMDOT_SPACE_PATCH */
+}
 }
 
 void dance_2_reset(tap_dance_state_t *state, void *user_data) {
@@ -348,7 +335,7 @@ void dance_2_reset(tap_dance_state_t *state, void *user_data) {
         case SINGLE_HOLD: unregister_code16(KC_SPACE); break; /* ORYX_TAPHOLD_FALLBACK_PATCH */
         case DOUBLE_TAP: break; /* ORYX_FN24_NUMDOT_SPACE_PATCH */
         case DOUBLE_SINGLE_TAP: break; /* ORYX_FN24_NUMDOT_SPACE_PATCH */
-    }
+}
     dance_state[2].step = 0;
 }
 void on_dance_3(tap_dance_state_t *state, void *user_data);
