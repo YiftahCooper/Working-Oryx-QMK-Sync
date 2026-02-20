@@ -234,12 +234,22 @@ def _replace_fn24_in_space_tap_dance(content: str, dance_indices: list[int]) -> 
 
 
 def _inject_custom_language_prototypes(content: str) -> tuple[str, bool]:
+    if "void custom_language_toggle(void);" in content:
+        return content, True
+
     if "void custom_language_toggled(void);" in content:
+        content = content.replace(
+            "void custom_language_toggled(void);\n",
+            "void custom_language_toggled(void);\n"
+            "void custom_language_toggle(void);\n",
+            1,
+        )
         return content, True
 
     prototype_block = (
         "\n// --- Custom language hooks (injected) ---\n"
         "void custom_language_toggled(void);\n"
+        "void custom_language_toggle(void);\n"
         "void custom_language_resync(void);\n"
         "void custom_language_rgb_indicator(void);\n"
         "// ----------------------------------------\n"
@@ -305,8 +315,8 @@ def _patch_language_switch_tap_dance(content: str, dance_indices: list[int]) -> 
             finished_body_new,
             "SINGLE_TAP",
             lambda indent: (
-                f"{indent}case SINGLE_TAP: tap_code16(LALT(KC_LEFT_SHIFT)); "
-                f"custom_language_toggled(); break; /* {LANGUAGE_TOGGLE_MARKER} */"
+                f"{indent}case SINGLE_TAP: custom_language_toggle(); "
+                f"break; /* {LANGUAGE_TOGGLE_MARKER} */"
             ),
         )
         if single_tap_patched:
