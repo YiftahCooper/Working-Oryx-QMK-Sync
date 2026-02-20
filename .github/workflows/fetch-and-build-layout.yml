@@ -87,11 +87,11 @@ jobs:
           echo "Verifying source for layout_id=${{ github.event.inputs.layout_id }} geometry=${{ github.event.inputs.layout_geometry }} hash_id=${{ steps.download-layout-source.outputs.hash_id }}"
 
           test -f oryx_source/keymap.c
-          F24_COUNT=$( (grep -o "KC_F24" oryx_source/keymap.c || true) | wc -l | tr -d ' ' )
-          echo "KC_F24 occurrences before patch: ${F24_COUNT}"
+          FN24_DANCE_COUNT=$( (grep -Eo "register_code16\(KC_F24\)|unregister_code16\(KC_F24\)" oryx_source/keymap.c || true) | wc -l | tr -d ' ' )
+          echo "FN24 tap-dance register/unregister occurrences before patch: ${FN24_DANCE_COUNT}"
 
-          if [ "${F24_COUNT}" -lt 1 ]; then
-            echo "KC_F24 not present in downloaded keymap. Skipping strict FN24 replacement checks for this run."
+          if [ "${FN24_DANCE_COUNT}" -lt 1 ]; then
+            echo "No FN24 tap-dance register/unregister patterns found. Skipping strict FN24 replacement checks for this run."
             echo "requires_fn24_patch=false" >> "$GITHUB_OUTPUT"
           else
             echo "requires_fn24_patch=true" >> "$GITHUB_OUTPUT"
@@ -123,9 +123,9 @@ jobs:
           test -f "${KEYMAP_PATH}"
 
           FN24_PATCH_MARKERS=$( (grep -o "ORYX_FN24_NUMDOT_SPACE_PATCH" "${KEYMAP_PATH}" || true) | wc -l | tr -d ' ' )
-          F24_AFTER=$( (grep -o "KC_F24" "${KEYMAP_PATH}" || true) | wc -l | tr -d ' ' )
+          FN24_DANCE_AFTER=$( (grep -Eo "register_code16\(KC_F24\)|unregister_code16\(KC_F24\)" "${KEYMAP_PATH}" || true) | wc -l | tr -d ' ' )
           echo "FN24 patch marker occurrences after patch: ${FN24_PATCH_MARKERS}"
-          echo "KC_F24 occurrences after patch: ${F24_AFTER}"
+          echo "FN24 tap-dance register/unregister occurrences after patch: ${FN24_DANCE_AFTER}"
 
           REQUIRE_FN24_PATCH="${{ steps.prepatch-check.outputs.requires_fn24_patch }}"
           echo "requires_fn24_patch=${REQUIRE_FN24_PATCH}"
@@ -136,12 +136,12 @@ jobs:
               exit 1
             fi
 
-            if [ "${F24_AFTER}" -gt 0 ]; then
-              echo "ERROR: KC_F24 still present after patch; expected replacement did not complete."
+            if [ "${FN24_DANCE_AFTER}" -gt 0 ]; then
+              echo "ERROR: FN24 tap-dance register/unregister calls still present after patch; expected replacement did not complete."
               exit 1
             fi
           else
-            echo "Skipping strict FN24 post-patch assertions because KC_F24 was absent in downloaded source."
+            echo "Skipping strict FN24 post-patch assertions because FN24 tap-dance patterns were absent in downloaded source."
           fi
 
 
