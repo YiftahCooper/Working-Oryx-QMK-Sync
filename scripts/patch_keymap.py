@@ -1287,6 +1287,61 @@ def patch_rules_mk_midi(layout_dir: str) -> None:
     print("Appended MIDI_ENABLE = yes to rules.mk")
 
 
+def patch_config_h_low_latency(layout_dir: str) -> None:
+    """
+    Inject global low-latency settings into config.h for snappier MIDI (and
+    typing) response. These are keyboard-wide and do NOT change any keycode
+    behavior on any layer, so they are safe for the whole layout:
+
+      - DEBOUNCE 1: QMK default is 5 ms; the debounce delay is added to every
+        key event before it is reported. 1 ms is safe for modern switches and
+        removes ~4 ms of latency per note-on/note-off.
+      - USB_POLLING_INTERVAL_MS 1: forces 1000 Hz USB reporting (1 ms) so note
+        events are delivered to the host as fast as USB Full Speed allows.
+
+    Idempotent: existing definitions are replaced (or added if missing).
+    """
+    config_path = os.path.join(layout_dir, "config.h")
+    if not os.path.exists(config_path):
+        print(f"Warning: {config_path} not found; cannot inject low-latency settings.")
+        return
+
+    with open(config_path, "r", encoding="utf-8") as f:
+        content = f.read()
+
+    settings = [
+        ("DEBOUNCE", "1"),
+        ("USB_POLLING_INTERVAL_MS", "1"),
+    ]
+
+    additions = []
+    for name, value in settings:
+        define_pat = re.compile(rf"^[ \t]*#define[ \t]+{name}\b.*$", flags=re.MULTILINE)
+        new_line = f"#define {name} {value}"
+        if define_pat.search(content):
+            new_content = define_pat.sub(new_line, content, count=1)
+            if new_content != content:
+                content = new_content
+                print(f"Updated existing #define {name} -> {value} in config.h")
+            else:
+                print(f"config.h already defines {name} {value}; skipping.")
+        else:
+            additions.append(new_line)
+
+    if additions:
+        block = (
+            "\n// Low-latency settings (global). Faster MIDI/typing response; "
+            "safe for all layers.\n" + "\n".join(additions) + "\n"
+        )
+        if not content.endswith("\n"):
+            content += "\n"
+        content += block
+        print(f"Injected low-latency settings into config.h: {', '.join(a.split()[1] for a in additions)}")
+
+    with open(config_path, "w", encoding="utf-8") as f:
+        f.write(content)
+
+
 def patch_keymap(layout_dir: str) -> None:
     keymap_path = os.path.join(layout_dir, "keymap.c")
     if not os.path.exists(keymap_path):
@@ -1464,6 +1519,9 @@ def patch_keymap(layout_dir: str) -> None:
     # 10) Enable MIDI in the build (config.h + rules.mk).
     patch_config_h_midi(layout_dir)
     patch_rules_mk_midi(layout_dir)
+
+    # 11) Global low-latency tuning (DEBOUNCE, USB polling) for MIDI responsiveness.
+    patch_config_h_low_latency(layout_dir)
 
 
 if __name__ == "__main__":

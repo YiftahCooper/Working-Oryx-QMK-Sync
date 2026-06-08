@@ -63,3 +63,7 @@
 
 // Advanced MIDI support (paired with MIDI_ENABLE=yes in rules.mk).
 #define MIDI_ADVANCED
+
+// Low-latency settings (global). Faster MIDI/typing response; safe for all layers.
+#define DEBOUNCE 1
+#define USB_POLLING_INTERVAL_MS 1
