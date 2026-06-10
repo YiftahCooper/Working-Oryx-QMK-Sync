@@ -1104,9 +1104,14 @@ def _build_midi_layer_body(original_args: list[str] | None = None) -> str:
     Every other position is preserved from the user's Oryx-generated layer 2 so
     that custom keys (RGB toggles, layer-toggles, etc.) survive the patch.
 
+    Sharps are biased LEFT: each accidental sits one key to the left of the
+    right-biased layout so it is directly above the natural it sharpens.
+    There are 7 naturals and 5 sharps per half; sharps fill the lowest-indexed
+    Row 1 keys on each half, leaving natural gaps at the E-F and B-C boundaries.
+
     Positions that are ALWAYS overwritten by the MIDI injection:
-      Row 1 – sharps:  k11=MI_Cs3, k12=MI_Ds3, k14=MI_Fs3, k15=MI_Gs3, k16=MI_As3,
-                       k18=MI_Db4, k19=MI_Eb4, k21=MI_Gb4, k22=MI_Ab4, k23=MI_Bb4
+      Row 1 – sharps:  k10=C#3, k11=D#3, k13=F#3, k14=G#3, k15=A#3,
+                       k17=Db4, k18=Eb4, k1a=Gb4, k1b=Ab4, k1c=Bb4
       Row 2 – naturals: k20..k2d  (MI_C3..MI_B3 / MI_C4..MI_B4)
       Row 3 – bass:     k30..k35  (MI_C2..MI_F2)
       Row 4 – bass:     k40..k44  (MI_G2..MI_B2)
@@ -1118,8 +1123,8 @@ def _build_midi_layer_body(original_args: list[str] | None = None) -> str:
     """
     # Indices (flat 0-based) of positions that MUST be overwritten with MIDI notes.
     MIDI_NOTE_INDICES = set()
-    # Row 1 sharps
-    for i in [15, 16, 18, 19, 20, 22, 23, 25, 26, 27]:
+    # Row 1 sharps (left-bias: sharp sits directly above its natural)
+    for i in [14, 15, 17, 18, 19, 21, 22, 24, 25, 26]:
         MIDI_NOTE_INDICES.add(i)
     # Row 2 naturals (all 14)
     for i in range(28, 42):
@@ -1136,9 +1141,9 @@ def _build_midi_layer_body(original_args: list[str] | None = None) -> str:
 
     # Build the default fallback (what we'd inject if no Oryx source available).
     DEFAULTS = ["KC_NO"] * 72
-    # Row 1 sharps
-    sharp_map = {15:"MI_Cs3",16:"MI_Ds3",18:"MI_Fs3",19:"MI_Gs3",20:"MI_As3",
-                 22:"MI_Db4",23:"MI_Eb4",25:"MI_Gb4",26:"MI_Ab4",27:"MI_Bb4"}
+    # Row 1 sharps (left-bias: each sharp sits directly above the natural it sharpens)
+    sharp_map = {14:"MI_Cs3",15:"MI_Ds3",17:"MI_Fs3",18:"MI_Gs3",19:"MI_As3",
+                 21:"MI_Db4",22:"MI_Eb4",24:"MI_Gb4",25:"MI_Ab4",26:"MI_Bb4"}
     for idx, kc in sharp_map.items():
         DEFAULTS[idx] = kc
     # Row 2 naturals
