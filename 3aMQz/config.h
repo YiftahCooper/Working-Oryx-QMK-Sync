@@ -6,7 +6,7 @@
 #define NO_AUTO_SHIFT_ALPHA
 #define CAPS_LOCK_STATUS
 #define HOLD_ON_OTHER_KEY_PRESS
-#define SERIAL_NUMBER "3aMQz/default"
+#define SERIAL_NUMBER "3aMQz/zLQZlO"
 #define LAYER_STATE_8BIT
 
 #define TAPPING_TERM_PER_KEY
