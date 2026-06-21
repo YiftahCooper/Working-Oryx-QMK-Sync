@@ -1,3 +1,9 @@
+Hey! This repo combines a ZSA Moonlander's online Oryx layout with custom QMK firmware. The Oryx web configurator is great but has gaps I fill here: a 12-note chromatic MIDI piano layer, Hebrew/English language-aware RGB, text automation via F-key placeholders, and CI that builds it all automatically.
+
+Open https://configure.zsa.io/moonlander/layouts/3aMQz/latest/0 to see the base layout — most keys are peach-colored labels that mark function-key placeholders which get replaced with real behavior by the patch script after the firmware builds.
+
+The rest of this README is AI-generated technical documentation that explains each feature in depth. Contact me at me@yiftah.com with questions.
+
 # Custom QMK Firmware for ZSA Moonlander
 
 Advanced MIDI keyboard, language-aware RGB, and Windows text automation — managed through Oryx with zero-merge-conflict CI/CD injection.
@@ -6,7 +12,7 @@ Advanced MIDI keyboard, language-aware RGB, and Windows text automation — mana
 
 This repository provides custom QMK firmware for the ZSA Moonlander keyboard, combining:
 
-- **MIDI Layer**: Two-octave polyphonic MIDI input with bass transpose shifter
+- **MIDI Layer**: Two-octave polyphonic MIDI input (12 bass notes + 14 melody notes + 10 sharps) with bass transpose shifter
 - **Language-Aware RGB**: Hebrew/English indicator with Windows sync
 - **Windhawk Mod**: Windows-side text automation (wrong-language fixer, case cycler)
 - **CI/CD Pipeline**: Automated Oryx → patch → build → release workflow
@@ -19,17 +25,16 @@ The key innovation: Oryx (ZSA's online layout editor) has no native MIDI support
 Working-Oryx-QMK-Sync/
 ├── custom_qmk/               ← Canonical custom firmware (custom_code.c)
 │   └── custom_code.c         ← MIDI bass shifter, language RGB, tap-dance handlers
-├── scripts/                  ← Python patching engine
+── scripts/                  ← Python patching engine
 │   └── patch_keymap.py       ← 11+ deterministic transformations injected into Oryx source
-├── host_tools/windhawk/      ← Windows Windhawk mod (v1.2.0)
+── host_tools/windhawk/      ← Windows Windhawk mod (v1.2.0)
 │   └── moonlander_language_sync.wh.cpp  ← F18/F19/F22 hotkeys, clipboard automation
-├── docs/                     ← Handoff reports & setup guides
 ├── .github/workflows/        ← CI: fetch Oryx → patch → build → release
 │   └── fetch-and-build-layout.yml
 ├── 3aMQz/                    ← Auto-synced patched layout snapshot (committed by workflow)
 │   ├── keymap.c              ← Oryx-generated + patched MIDI layer
 │   ├── config.h              ← MIDI_ADVANCED, low-latency settings
-│   ── rules.mk              ← MIDI_ENABLE = yes
+│   └─ rules.mk              ← MIDI_ENABLE = yes
 ├── Dockerfile                ← Debian arm-none-eabi QMK build container
 └── qmk_firmware/             ← ZSA QMK fork (submodule, fetched at build time)
 ```
@@ -49,7 +54,7 @@ Two octaves of polyphonic MIDI input with split melody/bass and a transpose shif
 | Left | k20–k26 | `C3 D3 E3 F3 G3 A3 B3` |
 | Right | k27–k2d | `C4 D4 E4 F4 G4 A4 B4` |
 
-**Sharps/flats (Row 1, biased right so each accidental sits above the next natural):**
+**Sharps/flats (Row 1, biased LEFT so each accidental sits directly above the natural it sharpens):**
 
 | Hand | Notes |
 |---|---|
@@ -66,7 +71,7 @@ Two octaves of polyphonic MIDI input with split melody/bass and a transpose shif
 
 #### Bass Shifter (Thumb Cluster)
 
-Three keys share the left thumb cluster: **BASS12** (k50, the 12th chromatic bass note, B2), **BASS_up** (k51), and **BASS_down** (k52). The two shifter keys each tap to transpose all bass notes ±1 semitone (free transpose across octaves, clamped −24..+24). Melody keys are in a higher keycode range and are never affected.
+Three keys share the left thumb cluster on Layer 2: **BASS12** (k50, the 12th chromatic bass note B2), **BASS_up** (k51), and **BASS_down** (k52). The two shifter keys each tap to transpose all bass notes ±1 semitone (free transpose across octaves, clamped −24..+24). Melody keys are in a higher keycode range and are never affected.
 
 **Implementation**: The firmware intercepts bass keys by **MIDI keycode range** (`MI_C2..MI_B2`), not by matrix position. On press, the shifter forwards a transposed note keycode to `process_midi()`, which emits the real MIDI note. Each held key snapshots its shifted note keycode so that a shift change mid-hold cannot strand a stuck note.
 
@@ -76,11 +81,12 @@ Three keys share the left thumb cluster: **BASS12** (k50, the 12th chromatic bas
 
 - `MIDI_ENABLE = yes` in `rules.mk`
 - `#define MIDI_ADVANCED` in `config.h`
-- `DEBOUNCE = 1` and `USB_POLLING_INTERVAL_MS = 1` for low-latency MIDI
+- `DEBOUNCE_TYPE = sym_eager_pk`, `DEBOUNCE = 5`, and `USB_POLLING_INTERVAL_MS = 1` for low-latency MIDI
+- `QMK_KEYS_PER_SCAN = 12` for instant polyphonic MIDI chords
 
 ### 2. Language-Aware RGB
 
-The left thumb indicator key lights **blue** (English) or **red** (Hebrew). State is synced from Windows over RAW HID using Oryx's `ORYX_STATUS_LED_CONTROL` command (`0x0A`):
+The left thumb indicator key (k40) lights **blue** (English) or **red** (Hebrew). State is synced from Windows over RAW HID using Oryx's `ORYX_STATUS_LED_CONTROL` command (`0x0A`):
 - Param[0] = `0x00` → English
 - Param[0] = `0x01` → Hebrew
 
@@ -97,11 +103,11 @@ The indicator only acts on the base layer (Layer 0); other layers use Oryx-confi
 
 `host_tools/windhawk/moonlander_language_sync.wh.cpp` (v1.2.0):
 
-| Hotkey | Function |
-|---|---|
-| **F18** | Language-switch (Win+Space / Alt+Shift / Ctrl+Shift) |
-| **F22** | Wrong-language fixer — flips Hebrew ↔ English by physical QWERTY position |
-| **F19** | Case cycler — lower → UPPER → Title → lower |
+| Hotkey | Source | Function |
+|---|---|---|
+| **F18** | DANCE_0 (thumb language key) | Language-switch (Win+Space / Alt+Shift / Ctrl+Shift) |
+| **F22** | k51 (Tap of RCtrl mod-tap) | Wrong-language fixer — flips Hebrew ↔ English by physical QWERTY position |
+| **F19** | k52 (Tap of Shift+Ctrl mod-tap) | Case cycler — lower → UPPER → Title → lower |
 
 Also syncs Windows input language to keyboard RGB over RAW HID (polled ~120 ms).
 
@@ -111,20 +117,149 @@ Also syncs Windows input language to keyboard RGB over RAW HID (polled ~120 ms).
 
 **Case cycler**: After pasting, the text stays highlighted so you can press F19 again to keep cycling.
 
-### 5. Keymap (Base Layer Snapshot)
+### 5. Base Layer Keymap (Layer 0)
 
-A modified QWERTY layout with dual-function thumb keys (managed in Oryx, snapshot at `3aMQz/keymap.c`):
+A modified QWERTY layout with dual-function thumb keys (managed in Oryx, snapshot at `3aMQz/keymap.c`). Function keys F18/F19/F22 are mapped in Oryx for Windhawk to intercept.
 
-| Key | Function |
+#### Row 0 (k00–k0d, 14 keys)
+
+| Left half | Right half |
 |---|---|
-| DUAL_FUNC_0 (k22) | Tap: Ctrl+A / Hold: Alt+Shift+[ |
-| DUAL_FUNC_1 (k2b) | Tap: Ctrl+E / Hold: Alt+Shift+] |
-| TD(DANCE_0, left thumb) | Tap: Shift / Double: Caps |
-| TD(DANCE_1, left thumb) | Tap: Space / Double: . + Space |
-| TD(DANCE_2, right thumb) | Tap: Ctrl+S / Hold: Ctrl+Alt+Shift+5 |
-| ST_MACRO_1 | Unicode `U+200A` + Enter |
-| ST_MACRO_2 | Unicode `U+00A3` + Enter |
-| ST_MACRO_14–19 | Unicode `U+200E` LTR mark inserts |
+| `ESC` `1` `2` `3` `4` `5` `=` | `MEH_T(PageUp)` `6` `7` `8` `9` `0` `Home` |
+
+- `MEH_T`: Hold activates MeH (Alt+Ctrl+Shift), tap sends the key.
+
+#### Row 1 (k10–k1d, 14 keys)
+
+| Left half | Right half |
+|---|---|
+| **DUAL_FUNC_0** `Q` `W` `E` `R` `T` `-` | `ALL_T(PgDn)` `Y` `U` `I` `O` `P` `End` |
+
+- `ALL_T`: Hold activates ALL (Ctrl+Alt+Shift+Gui), tap sends the key.
+- **DUAL_FUNC_0** (custom override): tap → `DELETE`, hold → `CTRL+DELETE`
+
+#### Row 2 (k20–k2d, 14 keys)
+
+| Left half | Right half |
+|---|---|
+| **DUAL_FUNC_1** `A` `S` `D` `F` `G` `` ` `` | `TG(1)` `H` `J` `K` `L` `;` `\` |
+
+- `TG(1)`: Momentary toggle to Layer 1.
+- **DUAL_FUNC_1** (custom override): tap → `BACKSPACE`, hold → `CTRL+BACKSPACE`
+
+#### Row 3 (k30–k3b, 12 keys)
+
+| Left half | Right half |
+|---|---|
+| `Shift` `Z` `X` `C` `V` `B` | `N` `M` `,` `.` `Up` `OSL(1)` |
+
+- `OSL(1)`: One-shot Layer 1 (next keypress only).
+
+#### Row 4 (k40–k4b, 12 keys)
+
+| Left half | Right half |
+|---|---|
+| **DANCE_0** `Gui` `Alt` `[` `]` `MT(RAlt,Tab)` | **DUAL_FUNC_2** `'` `/` `←` `↓` `→` |
+
+- `MT(RAlt, Tab)`: Hold Right Alt, tap Tab.
+- **DANCE_0** (language key): single tap → `F18` (triggers Windows language switch + RGB sync), hold → `LeftCtrl`, double tap → `F18`, more taps → additional F18 presses
+- **DUAL_FUNC_2** (custom override): tap → `ENTER`, hold → `SHIFT+ENTER`
+
+#### Row 5 — Thumb Cluster (k50–k55, 6 keys)
+
+| Left cluster | Right cluster |
+|---|---|
+| **DANCE_1** `MT(RCtrl,F22)` `MT(Shift+Ctrl,F19)` | `Delete` `Backspace` **DANCE_2** |
+
+- `MT(RCtrl, F22)`: Hold = Right Ctrl, **tap = F22** (Windhawk wrong-language fixer)
+- `MT(Shift+Ctrl, F19)`: Hold = Left Shift + Left Ctrl, **tap = F19** (Windhawk case cycler)
+- **DANCE_1** (left space/caps): single tap → `SPACE`, hold → `LEFT_SHIFT` (hold-preferences when interrupted), double tap → `CAPS LOCK`, double-single-tap → `CAPS LOCK`
+- **DANCE_2** (right space/numdot): single tap → `SPACE`, hold → `SPACE`, double tap → `KP_DOT + SPACE` (period-space shortcut)
+
+#### Per-Key Tapping Term Overrides
+
+Three keys have reduced tapping terms to favor tapping over holding during fast typing:
+
+| Key | Override | Effect |
+|---|---|---|
+| `KC_I` | `TAPPING_TERM - 70` | Faster tap registration on the home-row letter I |
+| `KC_DELETE` | `TAPPING_TERM - 120` | Faster tap on the Delete key in the thumb cluster |
+| `KC_BSPC` | `TAPPING_TERM - 120` | Faster tap on the Backspace key in the thumb cluster |
+
+### 6. Macros (ST_MACRO_0 through ST_MACRO_17)
+
+Layer 1 and Layer 3 carry Unicode and editor macros. Highlights:
+
+| Macros | Purpose |
+|---|---|
+| `ST_MACRO_0` | Unicode `U+20AC` (Euro €) + Enter |
+| `ST_MACRO_1` | Cut (`Ctrl+X`) + type `B` |
+| `ST_MACRO_5`–`ST_MACRO_11` | Various `Ctrl+X`/zoom/search shortcuts |
+| `ST_MACRO_12`, `ST_MACRO_13` | Alt-code input for `U+002E` (period) |
+| `ST_MACRO_14`–`ST_MACRO_17` | Unicode `U+002E` input variants |
+
+Macros have deliberate inter-key `SS_DELAY(100)` intervals; these may feel slow if triggered frequently.
+
+## Windhawk Mod Setup
+
+This documents the Windows host-side companion used for text automation and language-aware RGB sync.
+
+### 1. Oryx Configuration
+
+The firmware exposes the Windhawk hotkeys as follows:
+- **F18** (language switch): `DANCE_0` tap-dance on the left thumb key (k40) — single tap emits F18, hold emits `LeftCtrl`.
+- **F22** (wrong-language fixer): tap of the `MT(RCtrl, F22)` mod-tap at k51.
+- **F19** (case cycler): tap of the `MT(Shift+Ctrl, F19)` mod-tap at k52.
+
+### 2. Build and Flash
+
+1. Trigger **Actions → Fetch and build layout** on GitHub.
+2. Flash the newly built `.bin` to the Moonlander via Wally or ZSA Keymapp.
+
+### 3. Install the Windhawk Mod
+
+1. Install [Windhawk](https://windhawk.net/) (Windows only).
+2. Create a new mod and paste `host_tools/windhawk/moonlander_language_sync.wh.cpp`.
+3. Build and enable the mod.
+4. Default recommended settings:
+   - `enableF18Hotkey = true`
+   - `shortcutMode = 1` (Win+Space)
+   - `enableF22Hotkey = true`
+   - `enableF19Hotkey = true`
+   - `pollIntervalMs = 120`
+   - `onlyMoonlander = true`
+
+### 4. Verify
+
+1. Tap the left-thumb language tap-dance key (DANCE_0 / k40):
+   - Windows should switch language (per your chosen shortcut mode).
+   - The same key's RGB indicator should briefly reflect the new state.
+2. Select Hebrew-typed text (or English-typed text) and press k51 (F22):
+   - The text is replaced with characters flipped to the other alphabet based on physical key position.
+3. Select any text and press k52 (F19):
+   - Case cycles through `lower` → `UPPER` → `Title` → `lower`.
+4. After a paste, the pasted text stays highlighted so F19 can be pressed again to keep cycling.
+
+### 5. Protocol Reference
+
+Windhawk sends an Oryx-native RAW HID command to sync Windows language state to keyboard RGB:
+
+- Command: `ORYX_STATUS_LED_CONTROL` (`0x0A`)
+- Payload: `param[0] = 0x00` (English), `0x01` (Hebrew)
+- Transport: raw HID output report to any ZSA Moonlander device (filtered by manufacturer + product string)
+- Firmware reads mirrored state from `rawhid_state.status_led_control` in `custom_qmk/custom_code.c`.
+
+The indicator only responds on Layer 0; MIDI and other layers use Oryx-configured per-layer colors.
+
+### 6. Troubleshooting
+
+- If language switches but RGB does not update:
+  - Set `debugLogging = true` in the mod and check Windhawk's log output.
+  - Temporarily set `onlyMoonlander = false` to test broader HID matching.
+- If F18 should not trigger the Windows language shortcut:
+  - Set `enableF18Hotkey = false`. Keyboard-side language RGB sync still runs.
+- If you prefer a different Windows shortcut:
+  - `shortcutMode`: `1` = Win+Space (recommended), `2` = Alt+Shift, `3` = Ctrl+Shift, `0` = None.
 
 ## Build Pipeline
 
@@ -145,7 +280,7 @@ Triggered manually via **Actions → Fetch and build layout** (`fetch-and-build-
 - Layer 2 MIDI keycodes (preserving user-added keys like RGB toggles)
 - `#define MIDI_ADVANCED` in `config.h`
 - `MIDI_ENABLE = yes` in `rules.mk`
-- Low-latency settings (`DEBOUNCE = 1`, `USB_POLLING_INTERVAL_MS = 1`)
+- Low-latency settings (`DEBOUNCE_TYPE sym_eager_pk`, `DEBOUNCE 5`, `USB_POLLING_INTERVAL_MS 1`, `QMK_KEYS_PER_SCAN 12`)
 - MIDI octave fix (`midi_config.octave = 1` in `keyboard_post_init_user`)
 - Tap-dance stabilization patches
 - Language RGB indicator hook
@@ -225,7 +360,7 @@ The firmware sets `midi_config.octave = 1` at init. If notes are still wrong, ch
 
 ### MIDI latency is too high
 
-The firmware uses `DEBOUNCE = 1` and `USB_POLLING_INTERVAL_MS = 1`. If latency persists:
+The firmware uses `DEBOUNCE_TYPE sym_eager_pk`, `DEBOUNCE 5`, and `USB_POLLING_INTERVAL_MS 1`. If latency persists:
 - Disable RGB effects on the MIDI layer (use the RGB_TOG key you added)
 - Reduce your DAW's audio buffer size (128 or 256 samples)
 - Use ASIO drivers on Windows
@@ -233,8 +368,9 @@ The firmware uses `DEBOUNCE = 1` and `USB_POLLING_INTERVAL_MS = 1`. If latency p
 ### Windhawk mod not working
 
 - Ensure Windhawk is installed and the mod is enabled
-- Check that F18/F19/F22 are mapped in Oryx (not F21/F23)
+- Check that F18/F19/F22 are mapped in Oryx as DANCE_0 / MT-mod-taps (not F21/F23)
 - The mod polls language state every ~120ms; rapid switching may lag
+- The mod targets `explorer.exe`; if another app has focus the window-level shortcut may not fire
 
 ### Build fails with "not enough USB endpoints"
 
