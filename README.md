@@ -1,6 +1,6 @@
-Hey! This repo combines a ZSA Moonlander's online Oryx layout with custom QMK firmware. The Oryx web configurator is great but has gaps I fill here: a 12-note chromatic MIDI piano layer, Hebrew/English language-aware RGB, text automation via F-key placeholders, and CI that builds it all automatically.
+Hey! This repo combines a ZSA Moonlander's online Oryx layout with custom QMK firmware. The Oryx web configurator is limited so I supplemented it with custom code that adds: a 12-note chromatic MIDI piano layer, Hebrew/English language-aware RGB, text automation via F-key placeholders, and CI that builds it all automatically.
 
-Open https://configure.zsa.io/moonlander/layouts/3aMQz/latest/0 to see the base layout — most keys are peach-colored labels that mark function-key placeholders which get replaced with real behavior by the patch script after the firmware builds.
+Open https://configure.zsa.io/moonlander/layouts/3aMQz/latest/0 to see the base layout — most custom keys have peach-colored labels that mark function-key placeholders which get replaced with real behavior by the patch script after the firmware builds.
 
 The rest of this README is AI-generated technical documentation that explains each feature in depth. Contact me at me@yiftah.com with questions.
 
@@ -16,7 +16,7 @@ This repository provides custom QMK firmware for the ZSA Moonlander keyboard, co
 - **Language-Aware RGB**: Hebrew/English indicator with Windows sync
 - **Windhawk Companion**: Windows-side text automation (wrong-language fixer, case cycler)
 - **CI/CD Pipeline**: Automated Oryx → patch → build → release workflow
-- **MIDI Layer**: Two-octave polyphonic MIDI input (12 bass + 14 melody + 10 sharps) with bass transpose shifter
+- **MIDI Engine (Layer 2)**: A 26-note polyphonic MIDI controller featuring independent melody/bass splits and a dynamic thumb-controlled transpose shifter
 
 The key innovation: Oryx (ZSA's online layout editor) has no native MIDI support. Instead of manually maintaining merge-conflict-prone `keymap.c` files, this project downloads fresh Oryx source in CI, runs `scripts/patch_keymap.py` to inject custom code, builds via Docker, and publishes `.bin` firmware. **No merge conflicts. Only custom code is tracked.**
 
@@ -52,7 +52,7 @@ Working-Oryx-QMK-Sync/
 │   ├── keymap.c              ← Oryx-generated + patched MIDI layer
 │   ├── config.h              ← MIDI_ADVANCED, low-latency settings
 │   └── rules.mk              ← MIDI_ENABLE = yes
-├├── Dockerfile                ← Debian arm-none-eabi QMK build container
+├── Dockerfile                ← Debian arm-none-eabi QMK build container
 └── qmk_firmware/           ← ZSA QMK fork (submodule, fetched at build time)
 ```
 
@@ -133,7 +133,9 @@ The left thumb indicator key (k40) lights **blue** (English) or **red** (Hebrew)
 - Param[0] = `0x00` → English
 - Param[0] = `0x01` → Hebrew
 
-The indicator only acts on the base layer (Layer 0); other layers use Oryx-configured per-layer colors. This prevents the language RGB from overriding other layer's per-key colors.
+The indicator only acts on the base layer (Layer 0); other layers use Oryx-configured per-layer colors. This prevents the global language indicator from overriding customized per-key backlighting on higher layers.
+
+In future I will probably change things around so the entire base layer changes from green to a different color when Hebrew is active. I have a hard time seeing the key. 
 
 ### 3. Tap-Dance Stabilization
 
@@ -144,12 +146,12 @@ The indicator only acts on the base layer (Layer 0); other layers use Oryx-confi
 
 ### 4. Windhawk Mod (Windows)
 
-The `host_tools/windhawk/moonlander_language_sync.wh.cpp` companion mod provides three keyboard shortcuts and background language-state sync. Version 1.2.0.
+The Windhawk companion mod (`moonlander_language_sync.wh.cpp` v1.2.0) handles background Windows language state synchronization and manages three main keyboard shortcuts:
 
 | Hotkey | Source in firmware | Function |
 |---|---|---|
 | **F18** | DANCE_0 (left-thumb language key) | Language-switch (Win+Space / Alt+Shift / Ctrl+Shift) |
-| **F22** | k51 (tap of RCtrl mod-tap) | Wrong-language fixer — flips Hebrew ↔ English by physical QWERTY position |
+| **F22** | k51 (tap of RCtrl mod-tap) | Wrong-language fixer — translates characters between Hebrew and English physical layouts in place |
 | **F19** | k52 (tap of Shift+Ctrl mod-tap) | Case cycler — lower → UPPER → Title → lower |
 
 The mod also syncs Windows input language to keyboard RGB over RAW HID (polled ~120 ms).
@@ -189,7 +191,7 @@ The mod also syncs Windows input language to keyboard RGB over RAW HID (polled ~
 **4. Verify**
 1. Tap the left-thumb language tap-dance key (DANCE_0 / k40):
    - Windows should switch language (per your chosen shortcut mode).
-   - The same key's RGB indicator should briefly reflect the new state.
+   - The same key's RGB indicator should instantly reflect the new state.
 2. Select Hebrew-typed text (or English-typed text) and press k51 (F22):
    - Text is replaced with characters flipped to the other alphabet by physical key position.
 3. Select any text and press k52 (F19):
@@ -221,11 +223,10 @@ Layer 1 and Layer 3 carry Unicode and editor macros. Highlights:
 | `ST_MACRO_12`, `ST_MACRO_13` | Alt-code input for `U+002E` (period) |
 | `ST_MACRO_14`–`ST_MACRO_17` | Unicode `U+002E` input variants |
 
-Macros have deliberate inter-key `SS_DELAY(100)` intervals; they may feel slow if triggered frequently.
+These macros include a deliberate 100ms delay (`SS_DELAY(100)`) between keystrokes to ensure OS registration; they can be optimized to 10ms or 0ms in `config.h` if faster output is desired.
 
 ### 6. MIDI Layer (Layer 2)
 
-*This section describes the most niche feature. Most people will only care about the sections above.*
 
 Two octaves of polyphonic MIDI input with split melody/bass and a transpose shifter. Uses **MIDI_ADVANCED** (not MIDI_BASIC) so note keycodes route through `process_midi()` which decodes by keycode value — required for the bass shifter to work correctly.
 
@@ -357,7 +358,7 @@ Global Windhawk hotkeys must use scancodes not already reserved by the firmware 
 
 ### Why preserve-by-default for Layer 2?
 
-The original patch script overwrote the entire Layer 2 body, wiping any keys the user added in Oryx (e.g., RGB toggles, layer-toggle keys). The rewrite only overwrites the exact MIDI note positions and preserves everything else from the Oryx source.
+The original patch script replaced the entire Layer 2 keymap, which erased user-configured keys from Oryx (such as RGB or layer toggles). The modern parser selectively merges QMK MIDI notes into designated matrix positions, leaving custom Oryx layout adjustments untouched.
 
 ## Troubleshooting
 
