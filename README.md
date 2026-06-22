@@ -44,7 +44,7 @@ Working-Oryx-QMK-Sync/
 │   └── custom_code.c         ← MIDI bass shifter, language RGB, tap-dance handlers
 ├── scripts/                  ← Python patching engine
 │   └── patch_keymap.py       ← 11+ deterministic transformations injected into Oryx source
-├── host_tools/windhawk/      ← Windows Windhawk mod (v1.2.1)
+├── host_tools/windhawk/      ← Windows Windhawk mod (v1.2.2)
 │   └── moonlander_language_sync.wh.cpp  ← F18/F19/F22 hotkeys, clipboard automation
 ├── .github/workflows/        ← CI: fetch Oryx → patch → build → release
 │   └── fetch-and-build-layout.yml
@@ -146,7 +146,7 @@ In future I will probably change things around so the entire base layer changes 
 
 ### 4. Windhawk Mod (Windows)
 
-The Windhawk companion mod (`moonlander_language_sync.wh.cpp` v1.2.1) handles background Windows language state synchronization and manages three main keyboard shortcuts:
+The Windhawk companion mod (`moonlander_language_sync.wh.cpp` v1.2.2) handles background Windows language state synchronization and manages three main keyboard shortcuts:
 
 | Hotkey | Source in firmware | Function |
 |---|---|---|

@@ -2,7 +2,7 @@
 // @id              moonlander-language-sync
 // @name            Moonlander Language Sync
 // @description     Maps F18 to language switching, F22 to wrong-language text fixer, F19 to case cycling, and syncs EN/HE state to QMK RGB via RAW HID.
-// @version         1.2.1
+// @version         1.2.2
 // @include         explorer.exe
 // @compilerOptions -lsetupapi -lhid
 // ==/WindhawkMod==
@@ -695,8 +695,20 @@ DWORD WINAPI worker_thread_proc(void *) {
         while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {
             if (msg.message == WM_HOTKEY) {
                 if (g_is_synthesizing) {
-                    continue;  // Ignore hotkeys during synthetic input
+                    continue;  // Duplicate WM_HOTKEY still queued from the same physical
+                               // keypress (keydown+keyup pair) — drain and ignore.
                 }
+
+                // Keep the synthesizing guard set for the duration of the
+                // entire PeekMessage drain. RegisterHotKey is known to post
+                // WM_HOTKEY on BOTH key-down and key-up for bare virtual
+                // keys (VK_F19/VK_F22 especially) despite MOD_NOREPEAT, so
+                // only releasing after the queue is empty prevents the
+                // duplicate dispatch whose symptom was "original text +
+                // transformed text" being pasted side-by-side.
+                //
+                // Reset is performed below, outside the PeekMessage loop.
+                g_is_synthesizing = true;
 
                 if (msg.wParam == kHotkeyIdF18) {
                     trigger_language_shortcut();
@@ -705,18 +717,18 @@ DWORD WINAPI worker_thread_proc(void *) {
                     next_unsent_retry_tick = 0;
                     last_poll_tick = 0;
                 } else if (msg.wParam == kHotkeyIdF22) {
-                    g_is_synthesizing = true;
                     send_ctrl_c();
                     fix_wrong_language_clipboard();
-                    g_is_synthesizing = false;
                 } else if (msg.wParam == kHotkeyIdF19) {
-                    g_is_synthesizing = true;
                     send_ctrl_c();
                     cycle_case_clipboard();
-                    g_is_synthesizing = false;
                 }
             }
         }
+
+        // Queue now empty (PeekMessageW returned FALSE). Safe to accept
+        // the next legitimate, physically distinct keypress.
+        g_is_synthesizing = false;
 
         DWORD now = GetTickCount();
         if (last_poll_tick == 0 || now - last_poll_tick >= static_cast<DWORD>(g_settings.poll_interval_ms)) {
