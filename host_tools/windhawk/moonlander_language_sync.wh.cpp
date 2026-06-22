@@ -102,7 +102,12 @@ Settings g_settings;
 HANDLE g_stop_event = nullptr;
 HANDLE g_worker_thread = nullptr;
 
-// Synthetic input guard to prevent the mod from intercepting its own Ctrl+C / Ctrl+V
+// Re-entrancy guard: set to true while a clipboard-transform transaction is
+// in flight (send_ctrl_c + read/transform/write/send_ctrl_v/reselect). The
+// worker-thread hotkey dispatch raises this across the entire transaction so
+// the hotkey cannot fire a second time in the gap between send_ctrl_c and
+// send_ctrl_v, which previously produced a duplicate paste of the original
+// text adjacent to the transformed text.
 static bool g_is_synthesizing = false;
 
 // Forward declarations: send_key_event() and friends are defined later in the
@@ -212,25 +217,21 @@ void clear_held_modifiers() {
 }
 
 void send_ctrl_c() {
-    g_is_synthesizing = true;
     clear_held_modifiers();
     send_key_event(VK_LCONTROL, true);
     send_key_event('C', true);
     send_key_event('C', false);
     send_key_event(VK_LCONTROL, false);
     Sleep(kClipboardDelayMs);
-    g_is_synthesizing = false;
 }
 
 void send_ctrl_v() {
-    g_is_synthesizing = true;
     clear_held_modifiers();
     send_key_event(VK_LCONTROL, true);
     send_key_event('V', true);
     send_key_event('V', false);
     send_key_event(VK_LCONTROL, false);
     Sleep(kClipboardDelayMs);
-    g_is_synthesizing = false;
 }
 
 // After a paste, the selection is lost and the caret sits at the end of the
@@ -241,7 +242,6 @@ void reselect_after_paste(size_t count) {
     if (count == 0) {
         return;
     }
-    g_is_synthesizing = true;
     clear_held_modifiers();
     send_key_event(VK_LSHIFT, true);
     for (size_t i = 0; i < count; i++) {
@@ -249,7 +249,6 @@ void reselect_after_paste(size_t count) {
         send_key_event(VK_LEFT, false);
     }
     send_key_event(VK_LSHIFT, false);
-    g_is_synthesizing = false;
 }
 
 // Returns true if ch is a Hebrew letter (final + non-final forms live in the
@@ -706,11 +705,15 @@ DWORD WINAPI worker_thread_proc(void *) {
                     next_unsent_retry_tick = 0;
                     last_poll_tick = 0;
                 } else if (msg.wParam == kHotkeyIdF22) {
+                    g_is_synthesizing = true;
                     send_ctrl_c();
                     fix_wrong_language_clipboard();
+                    g_is_synthesizing = false;
                 } else if (msg.wParam == kHotkeyIdF19) {
+                    g_is_synthesizing = true;
                     send_ctrl_c();
                     cycle_case_clipboard();
+                    g_is_synthesizing = false;
                 }
             }
         }
