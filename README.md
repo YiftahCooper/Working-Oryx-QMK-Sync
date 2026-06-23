@@ -44,7 +44,7 @@ Working-Oryx-QMK-Sync/
 │   └── custom_code.c         ← MIDI bass shifter, language RGB, tap-dance handlers
 ├── scripts/                  ← Python patching engine
 │   └── patch_keymap.py       ← 11+ deterministic transformations injected into Oryx source
-── host_tools/windhawk/      ← Windows Windhawk mod (v1.2.8)
+├── host_tools/windhawk/      ← Windows Windhawk mod (v1.2.8)
 │   └── moonlander_language_sync.wh.cpp  ← F18/F19/F22 hotkeys, clipboard automation
 ├── .github/workflows/        ← CI: fetch Oryx → patch → build → release
 │   └── fetch-and-build-layout.yml
