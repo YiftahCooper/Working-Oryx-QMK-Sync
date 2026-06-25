@@ -1,8 +1,8 @@
-Hey! This repo combines my ZSA Moonlander's online Oryx layout with custom QMK firmware. The Oryx web configurator is limited so I supplemented it with custom code. The additions: 
+Hey! This repo combines my ZSA Moonlander's online Oryx layout with custom QMK firmware and a custom windhawk mod. The Oryx web configurator is limited so I supplemented it with custom code. The additions: 
 * A 12-note chromatic MIDI piano layer
-* Hebrew/English language-aware RGB
-* Case switching functionality
-* A language correction feature that transplaces Hebrew characters with their english equivalent on a qwerty layout, and visa versa. This is to fix the problem of typing out an entire English scentence o ly to discover I had accidently been using hebrew characters. 
+* Hebrew/English language-aware RGB (requires accompanying windhawk mod)
+* Case switching functionality (requires windhawk mod)
+* A language correction feature that transplaces Hebrew characters with their english equivalent on a qwerty layout, and visa versa (requires windhawk mod). This is to fix the problem of typing out an entire English scentence o ly to discover I had accidently been using hebrew characters. 
 * Some custom keys and functions, for example quickly double tapping the right space key outputs ". " just like on my mobile phone
 The beauty of this setup is that it uses a CI that builds it all automatically, merging oryx and my custom code cleanly and outputing a compiled .bin file to flash. Full credit to poulainpi for that functionality:  https://github.com/poulainpi/oryx-with-custom-qmk
 
