@@ -19,10 +19,11 @@ Advanced MIDI keyboard, language-aware RGB, and Windows text automation — mana
 This repository provides custom QMK firmware for the ZSA Moonlander keyboard, combining:
 
 - **Layer-0 Keymap**: Modified QWERTY with dual-function thumb keys, 3 tap-dances, and F-key placeholders for Windows text automation
+- **MIDI Engine (Layer 2)**: A 26-note polyphonic MIDI controller featuring independent melody/bass splits and a dynamic thumb-controlled transpose shifter
 - **Language-Aware RGB**: Hebrew/English indicator with Windows sync
 - **Windhawk Companion**: Windows-side text automation (wrong-language fixer, case cycler)
 - **CI/CD Pipeline**: Automated Oryx → patch → build → release workflow
-- **MIDI Engine (Layer 2)**: A 26-note polyphonic MIDI controller featuring independent melody/bass splits and a dynamic thumb-controlled transpose shifter
+
 
 The key innovation: Oryx (ZSA's online layout editor) has no native MIDI support. Instead of manually maintaining merge-conflict-prone `keymap.c` files, this project downloads fresh Oryx source in CI, runs `scripts/patch_keymap.py` to inject custom code, builds via Docker, and publishes `.bin` firmware. **No merge conflicts. Only custom code is tracked.**
 
